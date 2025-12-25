@@ -13,16 +13,6 @@ pub enum RunStatus {
 }
 
 impl RunStatus {
-    #[allow(dead_code)]
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "running" | "live" => RunStatus::Running,
-            "finished" | "done" | "completed" => RunStatus::Finished,
-            "failed" | "error" => RunStatus::Failed,
-            _ => RunStatus::Unknown,
-        }
-    }
-
     pub fn display(&self) -> &'static str {
         match self {
             RunStatus::Running => "live",
@@ -88,16 +78,16 @@ pub enum ConfigValue {
 impl std::fmt::Display for ConfigValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigValue::Int(v) => write!(f, "{}", v),
+            ConfigValue::Int(v) => write!(f, "{v}"),
             ConfigValue::Float(v) => {
                 if v.abs() < 0.001 || v.abs() >= 1000.0 {
-                    write!(f, "{:.2e}", v)
+                    write!(f, "{v:.2e}")
                 } else {
-                    write!(f, "{:.4}", v)
+                    write!(f, "{v:.4}")
                 }
             }
-            ConfigValue::String(v) => write!(f, "{}", v),
-            ConfigValue::Bool(v) => write!(f, "{}", v),
+            ConfigValue::String(v) => write!(f, "{v}"),
+            ConfigValue::Bool(v) => write!(f, "{v}"),
             ConfigValue::Null => write!(f, "null"),
         }
     }
@@ -116,31 +106,6 @@ impl Metric {
             name,
             points: Vec::new(),
         }
-    }
-
-    /// Get the latest value for this metric
-    #[allow(dead_code)]
-    pub fn latest_value(&self) -> Option<f64> {
-        self.points.last().map(|p| p.value)
-    }
-
-    /// Get min and max values for axis scaling
-    #[allow(dead_code)]
-    pub fn value_range(&self) -> Option<(f64, f64)> {
-        if self.points.is_empty() {
-            return None;
-        }
-        let mut min = f64::MAX;
-        let mut max = f64::MIN;
-        for p in &self.points {
-            if p.value < min {
-                min = p.value;
-            }
-            if p.value > max {
-                max = p.value;
-            }
-        }
-        Some((min, max))
     }
 
     /// Get step range

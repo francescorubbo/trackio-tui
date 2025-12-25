@@ -58,17 +58,14 @@ impl<'a> MetricsChart<'a> {
             return;
         }
 
-        // Prepare datasets
-        let mut datasets: Vec<Dataset> = Vec::new();
+        // First pass: collect all points and calculate bounds
         let mut all_points: Vec<Vec<(f64, f64)>> = Vec::new();
-
-        // Calculate bounds
         let mut x_min = f64::MAX;
         let mut x_max = f64::MIN;
         let mut y_min = f64::MAX;
         let mut y_max = f64::MIN;
 
-        for (i, (run_name, metric)) in self.metrics.iter().enumerate() {
+        for (_, metric) in self.metrics.iter() {
             // Apply smoothing if needed
             let points: Vec<MetricPoint> = if self.config.smoothing > 0.0 {
                 metric.smoothed(self.config.smoothing)
@@ -76,46 +73,21 @@ impl<'a> MetricsChart<'a> {
                 metric.points.clone()
             };
 
-            // Convert to chart format
+            // Convert to chart format and update bounds
             let chart_points: Vec<(f64, f64)> = points
                 .iter()
-                .map(|p| (p.step as f64, p.value))
+                .map(|p| {
+                    let x = p.step as f64;
+                    let y = p.value;
+                    x_min = x_min.min(x);
+                    x_max = x_max.max(x);
+                    y_min = y_min.min(y);
+                    y_max = y_max.max(y);
+                    (x, y)
+                })
                 .collect();
 
-            // Update bounds
-            for (x, y) in &chart_points {
-                if *x < x_min {
-                    x_min = *x;
-                }
-                if *x > x_max {
-                    x_max = *x;
-                }
-                if *y < y_min {
-                    y_min = *y;
-                }
-                if *y > y_max {
-                    y_max = *y;
-                }
-            }
-
             all_points.push(chart_points);
-
-            // Create dataset
-            let color = self.theme.chart_color(i);
-            let label = if self.metrics.len() > 1 {
-                run_name.clone()
-            } else {
-                String::new()
-            };
-
-            datasets.push(
-                Dataset::default()
-                    .name(label)
-                    .marker(Marker::Braille)
-                    .graph_type(GraphType::Line)
-                    .style(Style::default().fg(color))
-                    .data(&[]) // Will be set after we have the data
-            );
         }
 
         // Apply x-axis config overrides
@@ -139,7 +111,7 @@ impl<'a> MetricsChart<'a> {
         y_min -= y_range * 0.05;
         y_max += y_range * 0.05;
 
-        // Recreate datasets with actual data references
+        // Create datasets with data
         let datasets: Vec<Dataset> = self.metrics
             .iter()
             .enumerate()
@@ -163,9 +135,9 @@ impl<'a> MetricsChart<'a> {
 
         // Format axis labels
         let x_labels = vec![
-            Span::raw(format!("{:.0}", x_min)),
+            Span::raw(format!("{x_min:.0}")),
             Span::raw(format!("{:.0}", (x_min + x_max) / 2.0)),
-            Span::raw(format!("{:.0}", x_max)),
+            Span::raw(format!("{x_max:.0}")),
         ];
 
         let y_labels = vec![
@@ -259,7 +231,7 @@ impl<'a> MetricSelector<'a> {
                 };
                 vec![
                     Span::styled(num, Style::default().add_modifier(Modifier::DIM)),
-                    Span::styled(format!("{}  ", name), style),
+                    Span::styled(format!("{name}  "), style),
                 ]
             })
             .collect();
@@ -274,14 +246,13 @@ impl<'a> MetricSelector<'a> {
 
 /// Format a value for display on axis labels
 fn format_value(value: f64) -> String {
-    if value.abs() < 0.001 && value != 0.0 {
-        format!("{:.2e}", value)
-    } else if value.abs() >= 1000.0 {
-        format!("{:.2e}", value)
-    } else if value.abs() >= 1.0 {
-        format!("{:.2}", value)
+    let abs_val = value.abs();
+    if (abs_val < 0.001 && value != 0.0) || abs_val >= 1000.0 {
+        format!("{value:.2e}")
+    } else if abs_val >= 1.0 {
+        format!("{value:.2}")
     } else {
-        format!("{:.4}", value)
+        format!("{value:.4}")
     }
 }
 

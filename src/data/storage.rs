@@ -6,7 +6,7 @@
 //! - `configs` table: id, run_name, config (JSON), created_at
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -46,17 +46,17 @@ impl Storage {
 
     /// Get the path to a project's database file
     fn project_db_path(&self, project: &str) -> PathBuf {
-        self.db_path.join(format!("{}.db", project))
+        self.db_path.join(format!("{project}.db"))
     }
 
     /// Open a read-only connection to a project database
     fn open_project_db(&self, project: &str) -> Result<Connection> {
         let path = self.project_db_path(project);
         if !path.exists() {
-            anyhow::bail!("Project database not found: {:?}", path);
+            anyhow::bail!("Project database not found: {path:?}");
         }
         Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .with_context(|| format!("Failed to open database: {:?}", path))
+            .with_context(|| format!("Failed to open database: {path:?}"))
     }
 
     /// List all available projects by scanning for .db files
@@ -140,7 +140,7 @@ impl Storage {
         let run_iter = stmt.query_map([], |row| {
             let run_name: String = row.get(0)?;
             // Config can be stored as TEXT or BLOB depending on how trackio wrote it
-            let config_json: String = get_string_or_blob(&row, 1)?;
+            let config_json: String = get_string_or_blob(row, 1)?;
             let created_at: String = row.get(2)?;
             Ok((run_name, config_json, created_at))
         })?;
@@ -281,36 +281,6 @@ impl Storage {
         Ok(metrics)
     }
 
-    /// Get config for a specific run
-    #[allow(dead_code)]
-    pub fn get_run_config(&self, project: &str, run_id: &str) -> Result<Vec<Config>> {
-        let conn = self.open_project_db(project)?;
-
-        let config_json: Option<String> = conn
-            .query_row(
-                "SELECT config FROM configs WHERE run_name = ?",
-                [run_id],
-                |row| get_string_or_blob(row, 0),
-            )
-            .ok();
-
-        config_json
-            .and_then(|json| parse_config_json(&json).ok())
-            .map(Ok)
-            .unwrap_or(Ok(Vec::new()))
-    }
-
-    /// Check if the database directory exists
-    #[allow(dead_code)]
-    pub fn exists(&self) -> bool {
-        self.db_path.exists()
-    }
-
-    /// Get the database path
-    #[allow(dead_code)]
-    pub fn path(&self) -> &Path {
-        &self.db_path
-    }
 }
 
 /// Parse JSON config string into Config vector

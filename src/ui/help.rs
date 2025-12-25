@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 
@@ -22,53 +22,64 @@ impl<'a> HelpOverlay<'a> {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         // Center the help popup
-        let popup_area = centered_rect(60, 70, area);
+        let popup_area = centered_rect(65, 80, area);
 
         // Clear the background
         frame.render_widget(Clear, popup_area);
 
-        let help_items = vec![
+        const DESCRIPTION: &str = "A terminal dashboard for visualizing machine learning experiments tracked with trackio. Browse projects, compare runs, and monitor metrics in real-time.";
+
+        let shortcuts = [
             ("Navigation", vec![
-                ("j / ↓", "Move down"),
-                ("k / ↑", "Move up"),
-                ("Enter / l", "Select / expand"),
-                ("Esc / h", "Back / collapse"),
-                ("Tab", "Cycle panels"),
+                ("j / ↓", "Move down in list"),
+                ("k / ↑", "Move up in list"),
+                ("Enter / l", "Select item / move right"),
+                ("Esc", "Go back / move left"),
+                ("Tab", "Cycle focus between panels"),
+                ("Shift+Tab", "Cycle focus backwards"),
             ]),
             ("Metrics", vec![
                 ("1-9", "Select metric by number"),
-                ("+ / -", "Adjust smoothing"),
-                ("[ / ]", "Adjust x-axis range"),
+                ("+ / =", "Increase smoothing"),
+                ("-", "Decrease smoothing"),
+                ("[ / ]", "Adjust x-axis zoom"),
             ]),
-            ("Selection", vec![
+            ("Comparison", vec![
                 ("s", "Toggle run for comparison"),
-                ("S", "Clear comparison selection"),
+                ("S", "Clear all comparisons"),
             ]),
-            ("Other", vec![
+            ("General", vec![
                 ("r", "Refresh data"),
-                ("/", "Search / filter"),
-                ("?", "Toggle this help"),
+                ("h / ?", "Toggle this help"),
                 ("q", "Quit"),
             ]),
         ];
 
         let mut lines: Vec<Line> = Vec::new();
+
+        // Add description as a single wrapped line
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("  {DESCRIPTION}"),
+            Style::default().add_modifier(Modifier::ITALIC),
+        )));
         lines.push(Line::from(""));
 
-        for (section, shortcuts) in help_items {
+        // Add keyboard shortcuts sections
+        for (section, items) in shortcuts {
             lines.push(Line::from(Span::styled(
-                format!("  {} ", section),
+                format!("  {section} "),
                 Style::default()
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
             )));
             lines.push(Line::from(""));
 
-            for (key, desc) in shortcuts {
+            for (key, desc) in items {
                 lines.push(Line::from(vec![
                     Span::raw("    "),
                     Span::styled(
-                        format!("{:<12}", key),
+                        format!("{key:<14}"),
                         Style::default().fg(self.theme.title),
                     ),
                     Span::raw(desc),
@@ -80,14 +91,15 @@ impl<'a> HelpOverlay<'a> {
         let paragraph = Paragraph::new(lines)
             .block(
                 Block::default()
-                    .title(" Keyboard Shortcuts ")
+                    .title(" trackio-tui Help ")
                     .title_alignment(Alignment::Center)
                     .borders(Borders::ALL)
                     .border_style(self.theme.border_style())
                     .title_style(self.theme.title_style())
                     .style(self.theme.normal_style()),
             )
-            .alignment(Alignment::Left);
+            .alignment(Alignment::Left)
+            .wrap(Wrap { trim: false });
 
         frame.render_widget(paragraph, popup_area);
     }
@@ -113,4 +125,3 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         ])
         .split(popup_layout[1])[1]
 }
-

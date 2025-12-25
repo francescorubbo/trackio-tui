@@ -88,9 +88,7 @@ pub struct App {
 impl App {
     /// Create a new App instance
     pub fn new(config: AppConfig) -> Result<Self> {
-        let theme = Theme::from_name(&config.theme)
-            .with_color_palette(&config.color_palette);
-        
+        let theme = Theme::default();
         let storage = Storage::new(config.db_path.clone());
         
         let mut app = App {
@@ -238,7 +236,7 @@ impl App {
                 self.should_quit = true;
                 return Ok(());
             }
-            KeyCode::Char('?') | KeyCode::F(1) => {
+            KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::F(1) => {
                 self.show_help = !self.show_help;
                 return Ok(());
             }
@@ -387,7 +385,7 @@ impl App {
             KeyCode::Enter | KeyCode::Char('l') => {
                 self.focused = FocusedPanel::Metrics;
             }
-            KeyCode::Esc | KeyCode::Char('h') => {
+            KeyCode::Esc => {
                 self.focused = FocusedPanel::Projects;
             }
             _ => {}
@@ -409,7 +407,7 @@ impl App {
                         .unwrap_or(self.metric_names.len() - 1);
                 }
             }
-            KeyCode::Esc | KeyCode::Char('h') => {
+            KeyCode::Esc => {
                 self.focused = FocusedPanel::Runs;
             }
             _ => {}
@@ -495,18 +493,15 @@ impl App {
         }
         
         // Add comparison runs' metrics
-        // Track how many comparison metrics we've added for each run
-        let mut comparison_run_idx = 0;
-        for metric in &self.comparison_metrics {
+        let metrics_per_run = self.metric_names.len().max(1);
+        for (i, metric) in self.comparison_metrics.iter().enumerate() {
             if metric.name == current_metric_name {
-                let run_idx = self.comparison_runs.get(comparison_run_idx / self.metric_names.len().max(1));
-                if let Some(&idx) = run_idx {
-                    if let Some(run) = self.runs.get(idx) {
+                if let Some(&run_idx) = self.comparison_runs.get(i / metrics_per_run) {
+                    if let Some(run) = self.runs.get(run_idx) {
                         chart_metrics.push((format!("{}*", run.display_name()), metric));
                     }
                 }
             }
-            comparison_run_idx += 1;
         }
         
         let chart = MetricsChart::new(
@@ -528,10 +523,12 @@ impl App {
         // Render status bar
         let project_name = self.projects.get(self.selected_project)
             .map(|p| p.name.as_str());
+        let error_msg = self.error_message.as_deref();
         let status_bar = StatusBar::new(
             project_name,
             Some(current_metric_name),
             self.chart_config.smoothing,
+            error_msg,
             &self.theme,
         );
         status_bar.render(frame, main_chunks[1]);
@@ -556,7 +553,7 @@ pub fn run(config: AppConfig) -> Result<()> {
     // Check if database exists
     let db_path = &config.db_path;
     if !db_path.exists() {
-        eprintln!("No trackio data found at: {:?}", db_path);
+        eprintln!("No trackio data found at: {db_path:?}");
         eprintln!("Run some experiments with trackio first, or specify a different path with --db-path");
         return Ok(());
     }
@@ -611,7 +608,7 @@ fn run_main_loop(
         if app.last_refresh.elapsed() >= tick_rate {
             if let Err(e) = app.refresh() {
                 // Log error but don't crash
-                app.set_error(format!("Refresh error: {}", e));
+                app.set_error(format!("Refresh error: {e}"));
             }
         }
         
@@ -621,7 +618,7 @@ fn run_main_loop(
             if let Event::Key(key) = event::read()? {
                 if let Err(e) = app.handle_input(key.code, key.modifiers) {
                     // Log error but don't crash
-                    app.set_error(format!("Input error: {}", e));
+                    app.set_error(format!("Input error: {e}"));
                 }
             }
         }

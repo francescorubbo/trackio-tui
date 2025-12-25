@@ -111,9 +111,9 @@ impl<'a> RunList<'a> {
                 let status_style = self.theme.status_style(&run.status);
                 
                 let line = Line::from(vec![
-                    Span::raw(format!("{}{} ", selected_marker, comparison_marker)),
-                    Span::raw(format!("{:<12} ", name)),
-                    Span::styled(format!("[{}]", status_display), status_style),
+                    Span::raw(format!("{selected_marker}{comparison_marker} ")),
+                    Span::raw(format!("{name:<12} ")),
+                    Span::styled(format!("[{status_display}]"), status_style),
                 ]);
 
                 let style = if i == self.selected {
@@ -203,6 +203,7 @@ pub struct StatusBar<'a> {
     project: Option<&'a str>,
     metric: Option<&'a str>,
     smoothing: f64,
+    error: Option<&'a str>,
     theme: &'a Theme,
 }
 
@@ -211,20 +212,37 @@ impl<'a> StatusBar<'a> {
         project: Option<&'a str>,
         metric: Option<&'a str>,
         smoothing: f64,
+        error: Option<&'a str>,
         theme: &'a Theme,
     ) -> Self {
         StatusBar {
             project,
             metric,
             smoothing,
+            error,
             theme,
         }
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        // If there's an error, show it prominently
+        if let Some(error) = self.error {
+            let content = Line::from(vec![
+                Span::styled(" Error: ", Style::default().fg(self.theme.status_failed).add_modifier(Modifier::BOLD)),
+                Span::styled(error, Style::default().fg(self.theme.status_failed)),
+            ]);
+
+            let paragraph = Paragraph::new(content)
+                .style(self.theme.normal_style())
+                .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(self.theme.status_failed)));
+
+            frame.render_widget(paragraph, area);
+            return;
+        }
+
         let title = match (self.project, self.metric) {
-            (Some(p), Some(m)) => format!(" trackio-tui: {} | {} ", p, m),
-            (Some(p), None) => format!(" trackio-tui: {} ", p),
+            (Some(p), Some(m)) => format!(" trackio-tui: {p} | {m} "),
+            (Some(p), None) => format!(" trackio-tui: {p} "),
             _ => " trackio-tui ".to_string(),
         };
 
@@ -239,7 +257,7 @@ impl<'a> StatusBar<'a> {
             self.smoothing * 20.0
         );
 
-        let help_text = "[?] Help  [q] Quit";
+        let help_text = "[h] Help  [q] Quit";
 
         let content = Line::from(vec![
             Span::styled(&title, self.theme.title_style()),
