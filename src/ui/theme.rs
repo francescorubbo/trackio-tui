@@ -29,21 +29,36 @@ impl Default for Theme {
             status_running: Color::Green,
             status_done: Color::Blue,
             status_failed: Color::Red,
+            // Using named colors instead of RGB for better terminal compatibility
             chart_colors: vec![
-                Color::Rgb(255, 107, 107), // Red
-                Color::Rgb(78, 205, 196),  // Teal
-                Color::Rgb(69, 183, 209),  // Blue
-                Color::Rgb(150, 206, 180), // Green
-                Color::Rgb(255, 234, 167), // Yellow
-                Color::Rgb(221, 160, 221), // Plum
-                Color::Rgb(152, 216, 200), // Mint
-                Color::Rgb(247, 220, 111), // Gold
+                Color::Red,
+                Color::Green,
+                Color::Yellow,
+                Color::Blue,
+                Color::Magenta,
+                Color::Cyan,
+                Color::LightRed,
+                Color::LightGreen,
             ],
         }
     }
 }
 
 impl Theme {
+    /// Base surface style used to paint widget backgrounds
+    pub fn surface_style(&self) -> Style {
+        Style::default().fg(self.fg).bg(self.bg)
+    }
+
+    /// Convenience helper returning (border_style, title_style) for focus state
+    pub fn panel_styles(&self, focused: bool) -> (Style, Style) {
+        if focused {
+            (self.focused_border_style(), self.focused_border_style())
+        } else {
+            (self.border_style(), self.dimmed_title_style())
+        }
+    }
+
     /// Get style for normal text
     pub fn normal_style(&self) -> Style {
         Style::default().fg(self.fg).bg(self.bg)
@@ -62,11 +77,25 @@ impl Theme {
         Style::default().fg(self.border)
     }
 
+    /// Get style for focused panel borders (distinct from normal borders)
+    pub fn focused_border_style(&self) -> Style {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    }
+
     /// Get style for titles
     pub fn title_style(&self) -> Style {
         Style::default()
             .fg(self.title)
             .add_modifier(Modifier::BOLD)
+    }
+
+    /// Get style for unfocused/dimmed titles
+    pub fn dimmed_title_style(&self) -> Style {
+        Style::default()
+            .fg(self.border)
+            .add_modifier(Modifier::DIM)
     }
 
     /// Get style for run status
@@ -83,5 +112,46 @@ impl Theme {
     /// Get a chart color by index (cycles through available colors)
     pub fn chart_color(&self, index: usize) -> Color {
         self.chart_colors[index % self.chart_colors.len()]
+    }
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chart_colors_are_distinct() {
+        let theme = Theme::default();
+        // Verify first few colors are all different
+        let c0 = theme.chart_color(0);
+        let c1 = theme.chart_color(1);
+        let c2 = theme.chart_color(2);
+        assert_ne!(c0, c1, "Colors 0 and 1 should be different");
+        assert_ne!(c1, c2, "Colors 1 and 2 should be different");
+        assert_ne!(c0, c2, "Colors 0 and 2 should be different");
+    }
+
+    #[test]
+    fn test_chart_color_cycles() {
+        let theme = Theme::default();
+        let len = theme.chart_colors.len();
+        // Color at index 0 should equal color at index len (cycle)
+        assert_eq!(theme.chart_color(0), theme.chart_color(len));
+        assert_eq!(theme.chart_color(1), theme.chart_color(len + 1));
+    }
+
+    #[test]
+    fn test_chart_colors_are_not_gray() {
+        let theme = Theme::default();
+        for (i, color) in theme.chart_colors.iter().enumerate() {
+            // Verify none of the colors are gray shades
+            let gray_colors = [Color::Gray, Color::DarkGray, Color::White, Color::Black];
+            assert!(
+                !gray_colors.contains(color),
+                "Chart color {i} should not be a gray shade: {:?}",
+                color
+            );
+        }
     }
 }

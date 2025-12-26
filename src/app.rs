@@ -19,7 +19,7 @@ use crate::cli::AppConfig;
 use crate::comparison::ComparisonState;
 use crate::data::{Config, Metric, Project, Run, Storage};
 use crate::ui::{
-    chart::{ChartConfig, MetricSelector, MetricsChart},
+    chart::{MetricSelector, MetricsChart},
     HelpOverlay, Theme,
     widgets::{ConfigPanel, ProjectList, RunList, StatusBar},
 };
@@ -74,9 +74,6 @@ pub struct App {
     selected_metric: usize,
     show_help: bool,
     
-    // Chart settings
-    chart_config: ChartConfig,
-    
     // Timing
     last_refresh: Instant,
     
@@ -108,7 +105,6 @@ impl App {
             selected_run: 0,
             selected_metric: 0,
             show_help: false,
-            chart_config: ChartConfig::default(),
             last_refresh: Instant::now(),
             should_quit: false,
             error_message: None,
@@ -306,45 +302,6 @@ impl App {
             }
         }
         
-        // Smoothing controls
-        match key {
-            KeyCode::Char('+') | KeyCode::Char('=') => {
-                self.chart_config.smoothing = (self.chart_config.smoothing + 0.05).min(0.99);
-                return Ok(());
-            }
-            KeyCode::Char('-') => {
-                self.chart_config.smoothing = (self.chart_config.smoothing - 0.05).max(0.0);
-                return Ok(());
-            }
-            _ => {}
-        }
-        
-        // X-axis controls
-        match key {
-            KeyCode::Char('[') => {
-                // Zoom out (show more data)
-                if let Some(min) = self.chart_config.x_min {
-                    self.chart_config.x_min = Some(min - 50.0);
-                }
-                return Ok(());
-            }
-            KeyCode::Char(']') => {
-                // Zoom in (show less data)
-                if self.chart_config.x_min.is_none() {
-                    // Initialize zoom
-                    if let Some(metric) = self.metrics.first() {
-                        if let Some((_, max)) = metric.step_range() {
-                            self.chart_config.x_min = Some((max as f64 - 100.0).max(0.0));
-                        }
-                    }
-                } else if let Some(min) = self.chart_config.x_min {
-                    self.chart_config.x_min = Some((min + 50.0).max(0.0));
-                }
-                return Ok(());
-            }
-            _ => {}
-        }
-        
         // Toggle run for comparison
         if key == KeyCode::Char('S') {
             // Shift+S: Clear all comparison selections
@@ -510,7 +467,8 @@ impl App {
             .unwrap_or("No metric selected");
         
         // Gather metrics for display (including comparison runs)
-        let mut chart_metrics: Vec<(String, &Metric)> = Vec::new();
+        // Tuple: (run_name, run_idx, metric)
+        let mut chart_metrics: Vec<(String, usize, &Metric)> = Vec::new();
         
         // Add current run's metric
         if let Some(metric) = self.metrics.iter()
@@ -518,14 +476,14 @@ impl App {
             let run_name = self.runs.get(self.selected_run)
                 .map(|r| r.display_name())
                 .unwrap_or_default();
-            chart_metrics.push((run_name, metric));
+            chart_metrics.push((run_name, self.selected_run, metric));
         }
         
         // Add comparison runs' metrics (excludes currently selected run)
         for (run_idx, metric) in self.comparison.get_comparison_metrics(self.selected_run) {
             if metric.name == current_metric_name {
                 if let Some(run) = self.runs.get(run_idx) {
-                    chart_metrics.push((format!("{}*", run.display_name()), metric));
+                    chart_metrics.push((run.display_name(), run_idx, metric));
                 }
             }
         }
@@ -533,7 +491,6 @@ impl App {
         let chart = MetricsChart::new(
             &chart_metrics,
             current_metric_name,
-            &self.chart_config,
             &self.theme,
         );
         chart.render(frame, content_chunks[0], self.focused == FocusedPanel::Metrics);
@@ -553,7 +510,6 @@ impl App {
         let status_bar = StatusBar::new(
             project_name,
             Some(current_metric_name),
-            self.chart_config.smoothing,
             error_msg,
             &self.theme,
         );

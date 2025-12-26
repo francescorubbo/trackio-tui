@@ -40,9 +40,6 @@ impl<'a> HelpOverlay<'a> {
             ]),
             ("Metrics", vec![
                 ("1-9", "Select metric by number"),
-                ("+ / =", "Increase smoothing"),
-                ("-", "Decrease smoothing"),
-                ("[ / ]", "Adjust x-axis zoom"),
             ]),
             ("Comparison", vec![
                 ("s", "Toggle run for comparison"),
@@ -96,10 +93,11 @@ impl<'a> HelpOverlay<'a> {
                     .borders(Borders::ALL)
                     .border_style(self.theme.border_style())
                     .title_style(self.theme.title_style())
-                    .style(self.theme.normal_style()),
+                    .style(self.theme.surface_style()),
             )
             .alignment(Alignment::Left)
-            .wrap(Wrap { trim: false });
+            .wrap(Wrap { trim: false })
+            .style(self.theme.surface_style());
 
         frame.render_widget(paragraph, popup_area);
     }

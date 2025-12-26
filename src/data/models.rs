@@ -107,38 +107,6 @@ impl Metric {
             points: Vec::new(),
         }
     }
-
-    /// Get step range
-    pub fn step_range(&self) -> Option<(i64, i64)> {
-        if self.points.is_empty() {
-            return None;
-        }
-        let min = self.points.first().map(|p| p.step).unwrap_or(0);
-        let max = self.points.last().map(|p| p.step).unwrap_or(0);
-        Some((min, max))
-    }
-
-    /// Apply exponential moving average smoothing
-    pub fn smoothed(&self, factor: f64) -> Vec<MetricPoint> {
-        if self.points.is_empty() || factor <= 0.0 {
-            return self.points.clone();
-        }
-
-        let alpha = 1.0 - factor.min(0.99);
-        let mut smoothed = Vec::with_capacity(self.points.len());
-        let mut ema = self.points[0].value;
-
-        for point in &self.points {
-            ema = alpha * point.value + (1.0 - alpha) * ema;
-            smoothed.push(MetricPoint {
-                step: point.step,
-                value: ema,
-                timestamp: point.timestamp,
-            });
-        }
-
-        smoothed
-    }
 }
 
 /// A single data point in a metric time series

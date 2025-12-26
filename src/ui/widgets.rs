@@ -4,7 +4,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
@@ -28,6 +28,9 @@ impl<'a> ProjectList<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        // Clear previous content to avoid style bleed when the panel shrinks
+        frame.render_widget(Clear, area);
+
         let items: Vec<ListItem> = self
             .projects
             .iter()
@@ -46,21 +49,19 @@ impl<'a> ProjectList<'a> {
             })
             .collect();
 
-        let border_style = if focused {
-            self.theme.title_style()
-        } else {
-            self.theme.border_style()
-        };
+        let (border_style, title_style) = self.theme.panel_styles(focused);
 
         let list = List::new(items)
             .block(
                 Block::default()
+                    .style(self.theme.surface_style())
                     .title(" Projects ")
                     .borders(Borders::ALL)
                     .border_style(border_style)
-                    .title_style(self.theme.title_style()),
+                    .title_style(title_style),
             )
-            .highlight_style(self.theme.highlight_style());
+            .highlight_style(self.theme.highlight_style())
+            .style(self.theme.surface_style());
 
         let mut state = ListState::default();
         state.select(Some(self.selected));
@@ -93,57 +94,78 @@ impl<'a> RunList<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        // Clear previous content to avoid stale cells when list shrinks
+        frame.render_widget(Clear, area);
+
         let items: Vec<ListItem> = self
             .runs
             .iter()
             .enumerate()
             .map(|(i, run)| {
                 let selected_marker = if i == self.selected { "▶" } else { " " };
-                let comparison_marker = if self.selected_for_comparison.contains(&i) {
-                    "●"
-                } else {
-                    " "
-                };
+                
+                // Show colored bullet for runs in chart (selected or comparison)
+                let in_chart = i == self.selected || self.selected_for_comparison.contains(&i);
+                let chart_color = self.theme.chart_color(i);
                 
                 let status_display = run.status.display();
                 let name = run.display_name();
                 
                 let status_style = self.theme.status_style(&run.status);
                 
-                let line = Line::from(vec![
-                    Span::raw(format!("{selected_marker}{comparison_marker} ")),
-                    Span::raw(format!("{name:<12} ")),
-                    Span::styled(format!("[{status_display}]"), status_style),
-                ]);
-
-                let style = if i == self.selected {
+                // Build the line with appropriate colors
+                // For items in chart, use chart colors for name; otherwise use normal style
+                let name_style = if in_chart {
+                    Style::default().fg(chart_color)
+                } else if i == self.selected {
                     self.theme.highlight_style()
-                } else if self.selected_for_comparison.contains(&i) {
-                    Style::default().add_modifier(Modifier::BOLD)
                 } else {
                     self.theme.normal_style()
                 };
 
-                ListItem::new(line).style(style)
+                let bullet_span = if in_chart {
+                    Span::styled("●", Style::default().fg(chart_color))
+                } else {
+                    Span::raw(" ")
+                };
+
+                let line = Line::from(vec![
+                    Span::raw(selected_marker),
+                    bullet_span,
+                    Span::raw(" "),
+                    Span::styled(format!("{name:<12} "), name_style),
+                    Span::styled(format!("[{status_display}]"), status_style),
+                ]);
+
+                // Only apply background highlight for selected item, don't override fg colors
+                let item_style = if i == self.selected {
+                    Style::default()
+                        .bg(self.theme.highlight_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else if self.selected_for_comparison.contains(&i) {
+                    Style::default().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+
+                ListItem::new(line).style(item_style)
             })
             .collect();
 
         let title = format!(" Runs ({}) ", self.runs.len());
-        let border_style = if focused {
-            self.theme.title_style()
-        } else {
-            self.theme.border_style()
-        };
+        let (border_style, title_style) = self.theme.panel_styles(focused);
 
         let list = List::new(items)
             .block(
                 Block::default()
+                    .style(self.theme.surface_style())
                     .title(title)
                     .borders(Borders::ALL)
                     .border_style(border_style)
-                    .title_style(self.theme.title_style()),
+                    .title_style(title_style),
             )
-            .highlight_style(self.theme.highlight_style());
+            .highlight_style(self.theme.highlight_style())
+            .style(self.theme.surface_style());
 
         let mut state = ListState::default();
         state.select(Some(self.selected));
@@ -164,6 +186,9 @@ impl<'a> ConfigPanel<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        // Clear surface to avoid leftover text when content shrinks
+        frame.render_widget(Clear, area);
+
         let lines: Vec<Line> = self
             .config
             .iter()
@@ -178,21 +203,19 @@ impl<'a> ConfigPanel<'a> {
             })
             .collect();
 
-        let border_style = if focused {
-            self.theme.title_style()
-        } else {
-            self.theme.border_style()
-        };
+        let (border_style, title_style) = self.theme.panel_styles(focused);
 
         let paragraph = Paragraph::new(lines)
             .block(
                 Block::default()
+                    .style(self.theme.surface_style())
                     .title(" Config ")
                     .borders(Borders::ALL)
                     .border_style(border_style)
-                    .title_style(self.theme.title_style()),
+                    .title_style(title_style),
             )
-            .wrap(Wrap { trim: true });
+            .wrap(Wrap { trim: true })
+            .style(self.theme.surface_style());
 
         frame.render_widget(paragraph, area);
     }
@@ -202,7 +225,6 @@ impl<'a> ConfigPanel<'a> {
 pub struct StatusBar<'a> {
     project: Option<&'a str>,
     metric: Option<&'a str>,
-    smoothing: f64,
     error: Option<&'a str>,
     theme: &'a Theme,
 }
@@ -211,20 +233,21 @@ impl<'a> StatusBar<'a> {
     pub fn new(
         project: Option<&'a str>,
         metric: Option<&'a str>,
-        smoothing: f64,
         error: Option<&'a str>,
         theme: &'a Theme,
     ) -> Self {
         StatusBar {
             project,
             metric,
-            smoothing,
             error,
             theme,
         }
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        // Clear status bar area to avoid mixing styles with previous frames
+        frame.render_widget(Clear, area);
+
         // If there's an error, show it prominently
         if let Some(error) = self.error {
             let content = Line::from(vec![
@@ -233,8 +256,13 @@ impl<'a> StatusBar<'a> {
             ]);
 
             let paragraph = Paragraph::new(content)
-                .style(self.theme.normal_style())
-                .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(self.theme.status_failed)));
+                .style(self.theme.surface_style())
+                .block(
+                    Block::default()
+                        .style(self.theme.surface_style())
+                        .borders(Borders::TOP)
+                        .border_style(Style::default().fg(self.theme.status_failed)),
+                );
 
             frame.render_widget(paragraph, area);
             return;
@@ -246,30 +274,22 @@ impl<'a> StatusBar<'a> {
             _ => " trackio-tui ".to_string(),
         };
 
-        // Create smoothing bar visualization
-        let smooth_percent = (self.smoothing * 5.0) as usize; // 0-20 range to 0-100%
-        let bar_filled = smooth_percent / 5;
-        let bar_empty = 20 - bar_filled;
-        let smoothing_bar = format!(
-            "Smoothing: [{}{}] {:.0}",
-            "=".repeat(bar_filled),
-            " ".repeat(bar_empty),
-            self.smoothing * 20.0
-        );
-
         let help_text = "[h] Help  [q] Quit";
 
         let content = Line::from(vec![
             Span::styled(&title, self.theme.title_style()),
             Span::raw("  "),
-            Span::raw(&smoothing_bar),
-            Span::raw("  "),
             Span::styled(help_text, Style::default().add_modifier(Modifier::DIM)),
         ]);
 
         let paragraph = Paragraph::new(content)
-            .style(self.theme.normal_style())
-            .block(Block::default().borders(Borders::TOP).border_style(self.theme.border_style()));
+            .style(self.theme.surface_style())
+            .block(
+                Block::default()
+                    .style(self.theme.surface_style())
+                    .borders(Borders::TOP)
+                    .border_style(self.theme.border_style()),
+            );
 
         frame.render_widget(paragraph, area);
     }
