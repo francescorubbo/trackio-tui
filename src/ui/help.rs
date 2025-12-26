@@ -2,29 +2,20 @@
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 
-use super::theme::Theme;
-
 /// Help overlay showing all keyboard shortcuts
-pub struct HelpOverlay<'a> {
-    theme: &'a Theme,
-}
+pub struct HelpOverlay;
 
-impl<'a> HelpOverlay<'a> {
-    pub fn new(theme: &'a Theme) -> Self {
-        HelpOverlay { theme }
+impl HelpOverlay {
+    pub fn new() -> Self {
+        HelpOverlay
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        // Center the help popup
         let popup_area = centered_rect(65, 80, area);
-
-        // Clear the background
         frame.render_widget(Clear, popup_area);
 
         const DESCRIPTION: &str = "A terminal dashboard for visualizing machine learning experiments tracked with trackio. Browse projects, compare runs, and monitor metrics in real-time.";
@@ -52,52 +43,24 @@ impl<'a> HelpOverlay<'a> {
             ]),
         ];
 
-        let mut lines: Vec<Line> = Vec::new();
+        let mut text = format!("\n  {DESCRIPTION}\n\n");
 
-        // Add description as a single wrapped line
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            format!("  {DESCRIPTION}"),
-            Style::default().add_modifier(Modifier::ITALIC),
-        )));
-        lines.push(Line::from(""));
-
-        // Add keyboard shortcuts sections
         for (section, items) in shortcuts {
-            lines.push(Line::from(Span::styled(
-                format!("  {section} "),
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
-            )));
-            lines.push(Line::from(""));
-
+            text.push_str(&format!("  {section}\n\n"));
             for (key, desc) in items {
-                lines.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(
-                        format!("{key:<14}"),
-                        Style::default().fg(self.theme.title),
-                    ),
-                    Span::raw(desc),
-                ]));
+                text.push_str(&format!("    {key:<14}{desc}\n"));
             }
-            lines.push(Line::from(""));
+            text.push('\n');
         }
 
-        let paragraph = Paragraph::new(lines)
+        let paragraph = Paragraph::new(text)
             .block(
                 Block::default()
                     .title(" trackio-tui Help ")
                     .title_alignment(Alignment::Center)
-                    .borders(Borders::ALL)
-                    .border_style(self.theme.border_style())
-                    .title_style(self.theme.title_style())
-                    .style(self.theme.surface_style()),
+                    .borders(Borders::ALL),
             )
-            .alignment(Alignment::Left)
-            .wrap(Wrap { trim: false })
-            .style(self.theme.surface_style());
+            .wrap(Wrap { trim: false });
 
         frame.render_widget(paragraph, popup_area);
     }

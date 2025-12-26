@@ -20,7 +20,7 @@ use crate::comparison::ComparisonState;
 use crate::data::{Config, Metric, Project, Run, Storage};
 use crate::ui::{
     chart::{MetricSelector, MetricsChart},
-    HelpOverlay, Theme,
+    HelpOverlay,
     widgets::{ConfigPanel, ProjectList, RunList, StatusBar},
 };
 
@@ -54,7 +54,6 @@ impl FocusedPanel {
 pub struct App {
     // Configuration
     config: AppConfig,
-    theme: Theme,
     
     // Data
     storage: Storage,
@@ -87,12 +86,10 @@ pub struct App {
 impl App {
     /// Create a new App instance
     pub fn new(config: AppConfig) -> Result<Self> {
-        let theme = Theme::default();
         let storage = Storage::new(config.db_path.clone());
         
         let mut app = App {
             config,
-            theme,
             storage,
             projects: Vec::new(),
             runs: Vec::new(),
@@ -443,23 +440,14 @@ impl App {
             .split(body_chunks[1]);
         
         // Render sidebar components
-        let project_list = ProjectList::new(
-            &self.projects,
-            self.selected_project,
-            &self.theme,
-        );
-        project_list.render(frame, sidebar_chunks[0], self.focused == FocusedPanel::Projects);
+        let project_list = ProjectList::new(&self.projects, self.selected_project);
+        project_list.render(frame, sidebar_chunks[0]);
         
-        let run_list = RunList::new(
-            &self.runs,
-            self.selected_run,
-            self.comparison.marked_runs(),
-            &self.theme,
-        );
-        run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
+        let run_list = RunList::new(&self.runs, self.selected_run);
+        run_list.render(frame, sidebar_chunks[1]);
         
-        let config_panel = ConfigPanel::new(&self.current_config, &self.theme);
-        config_panel.render(frame, sidebar_chunks[2], false);
+        let config_panel = ConfigPanel::new(&self.current_config);
+        config_panel.render(frame, sidebar_chunks[2]);
         
         // Render chart
         let current_metric_name = self.metric_names.get(self.selected_metric)
@@ -488,37 +476,23 @@ impl App {
             }
         }
         
-        let chart = MetricsChart::new(
-            &chart_metrics,
-            current_metric_name,
-            &self.theme,
-        );
-        chart.render(frame, content_chunks[0], self.focused == FocusedPanel::Metrics);
+        let chart = MetricsChart::new(&chart_metrics, current_metric_name);
+        chart.render(frame, content_chunks[0]);
         
         // Render metric selector
-        let metric_selector = MetricSelector::new(
-            &self.metric_names,
-            self.selected_metric,
-            &self.theme,
-        );
+        let metric_selector = MetricSelector::new(&self.metric_names, self.selected_metric);
         metric_selector.render(frame, content_chunks[1]);
         
         // Render status bar
         let project_name = self.projects.get(self.selected_project)
             .map(|p| p.name.as_str());
         let error_msg = self.error_message.as_deref();
-        let status_bar = StatusBar::new(
-            project_name,
-            Some(current_metric_name),
-            error_msg,
-            &self.theme,
-        );
+        let status_bar = StatusBar::new(project_name, error_msg);
         status_bar.render(frame, main_chunks[1]);
         
         // Render help overlay if active
         if self.show_help {
-            let help = HelpOverlay::new(&self.theme);
-            help.render(frame, size);
+            HelpOverlay::new().render(frame, size);
         }
     }
 }
