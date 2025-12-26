@@ -3,10 +3,11 @@
 //! This is a drop-in replacement for `trackio show` providing a keyboard-driven
 //! terminal dashboard for visualizing machine learning experiments.
 
+mod app;
 mod cli;
+mod comparison;
 mod data;
 mod ui;
-mod app;
 
 use anyhow::Result;
 use cli::{AppConfig, Cli};
