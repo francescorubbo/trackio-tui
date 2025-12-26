@@ -5,8 +5,7 @@
 mod models;
 mod storage;
 
-pub use models::{Config, Metric, Project, Run, RunStatus};
 #[cfg(test)]
 pub use models::MetricPoint;
+pub use models::{Config, Metric, Project, Run};
 pub use storage::Storage;
-

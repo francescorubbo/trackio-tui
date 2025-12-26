@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OpenFlags, Row};
 
-use super::models::{Config, ConfigValue, Metric, MetricPoint, Project, Run, RunStatus};
+use super::models::{Config, ConfigValue, Metric, MetricPoint, Project, Run};
 
 /// Helper to read a column that might be stored as TEXT or BLOB
 /// Trackio uses orjson which can write JSON as bytes (BLOB) rather than text
@@ -23,12 +23,13 @@ fn get_string_or_blob(row: &Row, idx: usize) -> rusqlite::Result<String> {
         Err(_) => {
             // Fall back to reading as blob and converting to string
             let blob: Vec<u8> = row.get(idx)?;
-            String::from_utf8(blob)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+            String::from_utf8(blob).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
                     idx,
                     rusqlite::types::Type::Blob,
                     Box::new(e),
-                ))
+                )
+            })
         }
     }
 }
@@ -80,9 +81,8 @@ impl Storage {
                     }
 
                     // Try to get run count and last updated from the database
-                    let (run_count, last_updated) = self
-                        .get_project_stats(name)
-                        .unwrap_or((0, None));
+                    let (run_count, last_updated) =
+                        self.get_project_stats(name).unwrap_or((0, None));
 
                     projects.push(Project {
                         name: name.to_string(),
@@ -105,16 +105,14 @@ impl Storage {
 
         // Get distinct run count from configs table
         let run_count: usize = conn
-            .query_row("SELECT COUNT(DISTINCT run_name) FROM configs", [], |row| row.get(0))
+            .query_row("SELECT COUNT(DISTINCT run_name) FROM configs", [], |row| {
+                row.get(0)
+            })
             .unwrap_or(0);
 
         // Get last updated timestamp from configs
         let last_updated: Option<String> = conn
-            .query_row(
-                "SELECT MAX(created_at) FROM configs",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT MAX(created_at) FROM configs", [], |row| row.get(0))
             .ok();
 
         let last_updated = last_updated.and_then(|ts| {
@@ -133,9 +131,8 @@ impl Storage {
         let mut runs = Vec::new();
 
         // Query configs table for run information
-        let mut stmt = conn.prepare(
-            "SELECT run_name, config, created_at FROM configs ORDER BY created_at DESC"
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT run_name, config, created_at FROM configs ORDER BY created_at DESC")?;
 
         let run_iter = stmt.query_map([], |row| {
             let run_name: String = row.get(0)?;
@@ -149,53 +146,22 @@ impl Storage {
             let (run_name, config_json, created_at) = run_result?;
 
             let config = parse_config_json(&config_json).unwrap_or_default();
-            
+
             let created_at = DateTime::parse_from_rfc3339(&created_at)
                 .or_else(|_| DateTime::parse_from_str(&created_at, "%Y-%m-%dT%H:%M:%S%.f"))
                 .map(|dt| dt.with_timezone(&Utc))
                 .ok();
 
-            // Check if run is still active (has recent metrics)
-            let status = self.get_run_status(&conn, &run_name)?;
-
             runs.push(Run {
                 id: run_name.clone(),
                 project: project.to_string(),
                 name: Some(run_name),
-                status,
                 created_at,
-                finished_at: None, // Not tracked in schema
                 config,
             });
         }
 
         Ok(runs)
-    }
-
-    /// Determine if a run is still active
-    fn get_run_status(&self, conn: &Connection, run_name: &str) -> Result<RunStatus> {
-        // Check the most recent metric timestamp
-        let last_timestamp: Option<String> = conn
-            .query_row(
-                "SELECT MAX(timestamp) FROM metrics WHERE run_name = ?",
-                [run_name],
-                |row| row.get(0),
-            )
-            .ok();
-
-        if let Some(ts) = last_timestamp {
-            if let Ok(dt) = DateTime::parse_from_rfc3339(&ts)
-                .or_else(|_| DateTime::parse_from_str(&ts, "%Y-%m-%dT%H:%M:%S%.f"))
-            {
-                let age = Utc::now() - dt.with_timezone(&Utc);
-                // Consider "running" if updated within the last 30 seconds
-                if age.num_seconds() < 30 {
-                    return Ok(RunStatus::Running);
-                }
-            }
-        }
-
-        Ok(RunStatus::Finished)
     }
 
     /// Get all metric names for a run
@@ -227,7 +193,7 @@ impl Storage {
         let conn = self.open_project_db(project)?;
 
         let mut stmt = conn.prepare(
-            "SELECT step, metrics, timestamp FROM metrics WHERE run_name = ? ORDER BY step"
+            "SELECT step, metrics, timestamp FROM metrics WHERE run_name = ? ORDER BY step",
         )?;
 
         let row_iter = stmt.query_map([run_id], |row| {
@@ -241,9 +207,11 @@ impl Storage {
 
         for row in row_iter {
             let (step, metrics_json, timestamp) = row?;
-            
+
             // Parse the JSON and extract the specific metric
-            if let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&metrics_json) {
+            if let Ok(map) =
+                serde_json::from_str::<HashMap<String, serde_json::Value>>(&metrics_json)
+            {
                 if let Some(value) = map.get(metric_name) {
                     if let Some(v) = value.as_f64() {
                         let ts = timestamp.and_then(|t| {
@@ -252,7 +220,7 @@ impl Storage {
                                 .map(|dt| dt.with_timezone(&Utc))
                                 .ok()
                         });
-                        
+
                         metric.points.push(MetricPoint {
                             step,
                             value: v,
@@ -280,13 +248,12 @@ impl Storage {
 
         Ok(metrics)
     }
-
 }
 
 /// Parse JSON config string into Config vector
 fn parse_config_json(json: &str) -> Result<Vec<Config>> {
     let map: HashMap<String, serde_json::Value> = serde_json::from_str(json)?;
-    
+
     let mut configs: Vec<Config> = map
         .into_iter()
         .filter(|(key, _)| !key.starts_with('_')) // Skip internal fields like _Username, _Created
@@ -332,7 +299,8 @@ mod tests {
 
     #[test]
     fn test_parse_config_json() {
-        let json = r#"{"epochs": 10, "learning_rate": 0.001, "name": "test", "_Created": "2025-01-01"}"#;
+        let json =
+            r#"{"epochs": 10, "learning_rate": 0.001, "name": "test", "_Created": "2025-01-01"}"#;
         let configs = parse_config_json(json).unwrap();
         // Should have 3 items (excluding _Created)
         assert_eq!(configs.len(), 3);

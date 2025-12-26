@@ -3,26 +3,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Status of an experiment run
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RunStatus {
-    Running,
-    Finished,
-    Failed,
-    Unknown,
-}
-
-impl RunStatus {
-    pub fn display(&self) -> &'static str {
-        match self {
-            RunStatus::Running => "live",
-            RunStatus::Finished => "done",
-            RunStatus::Failed => "fail",
-            RunStatus::Unknown => "???",
-        }
-    }
-}
-
 /// A trackio project containing multiple runs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -37,9 +17,7 @@ pub struct Run {
     pub id: String,
     pub project: String,
     pub name: Option<String>,
-    pub status: RunStatus,
     pub created_at: Option<DateTime<Utc>>,
-    pub finished_at: Option<DateTime<Utc>>,
     pub config: Vec<Config>,
 }
 
@@ -116,4 +94,3 @@ pub struct MetricPoint {
     pub value: f64,
     pub timestamp: Option<DateTime<Utc>>,
 }
-

@@ -46,7 +46,8 @@ impl AppConfig {
     /// Create AppConfig from CLI arguments
     pub fn from_cli(cli: &Cli) -> Self {
         // Determine database path
-        let db_path = cli.db_path
+        let db_path = cli
+            .db_path
             .as_ref()
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
