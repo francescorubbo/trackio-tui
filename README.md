@@ -1,17 +1,12 @@
 # trackio-tui
 
-A Rust-based Terminal User Interface for visualizing [trackio](https://github.com/gradio-app/trackio) experiments. This is a drop-in replacement for `trackio show` providing a keyboard-driven terminal dashboard.
-
-![trackio-tui demo](https://via.placeholder.com/800x400?text=trackio-tui+Dashboard)
+A Rust-based Terminal User Interface for visualizing [trackio](https://github.com/gradio-app/trackio) experiments. A keyboard-driven terminal dashboard for browsing your ML experiments.
 
 ## Features
 
 - **Full Keyboard Navigation**: Navigate projects, runs, and metrics using vim-style or arrow keys
 - **Real-time Updates**: Auto-refresh to monitor live training runs
 - **Multi-run Comparison**: Overlay multiple runs on the same chart for comparison
-- **Smoothing Controls**: Apply exponential moving average to smooth noisy metrics
-- **X-axis Zoom**: Focus on specific portions of training history
-- **Theme Support**: Choose from built-in themes or customize colors
 - **Fast & Lightweight**: Native Rust binary with minimal resource usage
 
 ## Installation
@@ -58,23 +53,90 @@ cargo install --path .
 
 ```bash
 # Launch dashboard (shows all projects)
-trackio-tui show
+trackio-tui
 
 # Load a specific project
-trackio-tui show --project "my-project"
+trackio-tui --project "my-project"
 
-# With a different theme
-trackio-tui show --theme "soft"
-
-# With custom colors
-trackio-tui show --color-palette "#FF6B6B,#4ECDC4,#45B7D1"
-
-# Custom refresh interval (seconds)
-trackio-tui show --interval 5
+# Custom refresh interval (seconds, default is 2)
+trackio-tui --interval 5
 
 # Point to a different database location
-trackio-tui show --db-path /path/to/trackio/data
+trackio-tui --db-path /path/to/trackio/data
 ```
+
+## Tutorial
+
+This step-by-step guide walks you through using trackio-tui to explore your experiments.
+
+### Prerequisites
+
+Before using trackio-tui, you need experiment data from [trackio](https://github.com/gradio-app/trackio). Run some training experiments first:
+
+```python
+import trackio
+
+trackio.init("my-project")
+for epoch in range(10):
+    trackio.log({"train_loss": 1.0 / (epoch + 1), "accuracy": epoch * 0.1})
+```
+
+### Step 1: Launch the Dashboard
+
+Open your terminal and run:
+
+```bash
+trackio-tui
+```
+
+The dashboard will display all your trackio projects in the left sidebar.
+
+### Step 2: Navigate Projects
+
+Use these keys to browse your projects:
+
+- Press `j` or `↓` to move down the project list
+- Press `k` or `↑` to move up
+- The selected project's runs appear in the Runs panel below
+
+### Step 3: Browse Runs
+
+Press `Tab` to switch focus to the Runs panel, then:
+
+- Use `j`/`k` or arrow keys to select different runs
+- The chart on the right updates to show the selected run's metrics
+- Press `Esc` to return focus to the Projects panel
+
+### Step 4: View Different Metrics
+
+The bottom of the chart area shows available metrics numbered `[1]`, `[2]`, etc.
+
+- Press number keys `1`-`9` to quickly switch between metrics
+- The chart title updates to show the currently selected metric
+
+### Step 5: Compare Multiple Runs
+
+To overlay multiple runs on the same chart for comparison:
+
+1. With the Runs panel focused, navigate to a run you want to compare
+2. Press `s` to mark it for comparison (a marker appears next to the run)
+3. Navigate to other runs and press `s` to add them
+4. All marked runs appear on the chart together with different colors
+
+To clear all comparisons, press `S` (Shift+s).
+
+### Step 6: Monitor Live Training
+
+If you have training runs in progress:
+
+- Data refreshes automatically every 2 seconds (configurable with `--interval`)
+- Press `r` to manually refresh at any time
+
+### Step 7: Get Help
+
+Press `h`, `?`, or `F1` at any time to show the help overlay with all keyboard shortcuts.
+
+Press `q` to quit the application.
 
 ## Keyboard Shortcuts
 
@@ -84,18 +146,9 @@ trackio-tui show --db-path /path/to/trackio/data
 |-----|--------|
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
-| `Enter` / `l` | Select / expand |
-| `Esc` / `h` | Go back / collapse |
-| `Tab` | Cycle panels (Projects → Runs → Metrics) |
+| `Esc` | Go back / switch to Projects panel |
+| `Tab` | Cycle panels (Projects ↔ Runs) |
 | `Shift+Tab` | Cycle panels backwards |
-
-### Metrics
-
-| Key | Action |
-|-----|--------|
-| `1-9` | Quick-select metric by number |
-| `+` / `-` | Adjust smoothing |
-| `[` / `]` | Adjust x-axis range (zoom) |
 
 ### Run Comparison
 
@@ -108,8 +161,9 @@ trackio-tui show --db-path /path/to/trackio/data
 
 | Key | Action |
 |-----|--------|
+| `1-9` | Quick-select metric by number |
 | `r` | Refresh data |
-| `?` / `F1` | Toggle help overlay |
+| `h` / `?` / `F1` | Toggle help overlay |
 | `q` | Quit |
 
 ## UI Layout
@@ -133,21 +187,10 @@ trackio-tui show --db-path /path/to/trackio/data
 │ Config            │                                                          │
 │ ───────────────   │  [1] train_loss  [2] val_loss  [3] accuracy              │
 │ epochs: 10        │                                                          │
-│ lr: 0.001         ├──────────────────────────────────────────────────────────┤
-│ batch: 64         │  Smoothing: [=====               ] 5                     │
+│ lr: 0.001         │                                                          │
+│ batch: 64         │                                                          │
 └───────────────────┴──────────────────────────────────────────────────────────┘
 ```
-
-## Themes
-
-Built-in themes:
-
-- `default` - Standard dark theme with vibrant colors
-- `soft` - Muted colors, easier on the eyes
-- `dark` - High contrast dark theme
-- `light` - Light background theme
-
-Custom color palettes can be specified with `--color-palette` using comma-separated hex colors.
 
 ## Data Source
 
@@ -173,7 +216,6 @@ You can override this with:
 | Language | Rust | Python |
 | Installation | Single binary | pip install |
 | GPU Monitoring | No | Yes |
-| Startup Time | Fast | Slower |
 | Dependencies | None | Python + trackio |
 
 For GPU monitoring features, consider using [trackio-view](https://github.com/mcgrof/trackio-view).
