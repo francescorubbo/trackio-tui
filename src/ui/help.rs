@@ -24,7 +24,6 @@ impl HelpOverlay {
             ("Navigation", vec![
                 ("j / ↓", "Move down in list"),
                 ("k / ↑", "Move up in list"),
-                ("Enter / l", "Select item / move right"),
                 ("Esc", "Go back / move left"),
                 ("Tab", "Cycle focus between panels"),
                 ("Shift+Tab", "Cycle focus backwards"),

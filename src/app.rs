@@ -341,9 +341,6 @@ impl App {
                     self.load_runs()?;
                 }
             }
-            KeyCode::Enter | KeyCode::Char('l') => {
-                self.focused = FocusedPanel::Runs;
-            }
             _ => {}
         }
         Ok(())
@@ -364,9 +361,6 @@ impl App {
                         .unwrap_or(self.runs.len() - 1);
                     self.load_metrics()?;
                 }
-            }
-            KeyCode::Enter | KeyCode::Char('l') => {
-                self.focused = FocusedPanel::Metrics;
             }
             KeyCode::Esc => {
                 self.focused = FocusedPanel::Projects;
