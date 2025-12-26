@@ -29,23 +29,20 @@ use crate::ui::{
 pub enum FocusedPanel {
     Projects,
     Runs,
-    Metrics,
 }
 
 impl FocusedPanel {
     fn next(self) -> Self {
         match self {
             FocusedPanel::Projects => FocusedPanel::Runs,
-            FocusedPanel::Runs => FocusedPanel::Metrics,
-            FocusedPanel::Metrics => FocusedPanel::Projects,
+            FocusedPanel::Runs => FocusedPanel::Projects,
         }
     }
 
     fn prev(self) -> Self {
         match self {
-            FocusedPanel::Projects => FocusedPanel::Metrics,
+            FocusedPanel::Projects => FocusedPanel::Runs,
             FocusedPanel::Runs => FocusedPanel::Projects,
-            FocusedPanel::Metrics => FocusedPanel::Runs,
         }
     }
 }
@@ -319,7 +316,6 @@ impl App {
         match self.focused {
             FocusedPanel::Projects => self.handle_project_navigation(key)?,
             FocusedPanel::Runs => self.handle_run_navigation(key)?,
-            FocusedPanel::Metrics => self.handle_metric_navigation(key)?,
         }
         
         Ok(())
@@ -370,27 +366,6 @@ impl App {
         Ok(())
     }
     
-    fn handle_metric_navigation(&mut self, key: KeyCode) -> Result<()> {
-        match key {
-            KeyCode::Down | KeyCode::Char('j') | KeyCode::Right | KeyCode::Char('l') => {
-                if !self.metric_names.is_empty() {
-                    self.selected_metric = (self.selected_metric + 1) % self.metric_names.len();
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') | KeyCode::Left => {
-                if !self.metric_names.is_empty() {
-                    self.selected_metric = self.selected_metric
-                        .checked_sub(1)
-                        .unwrap_or(self.metric_names.len() - 1);
-                }
-            }
-            KeyCode::Esc => {
-                self.focused = FocusedPanel::Runs;
-            }
-            _ => {}
-        }
-        Ok(())
-    }
     
     /// Render the UI
     fn render(&self, frame: &mut ratatui::Frame) {
@@ -435,10 +410,10 @@ impl App {
         
         // Render sidebar components
         let project_list = ProjectList::new(&self.projects, self.selected_project);
-        project_list.render(frame, sidebar_chunks[0]);
+        project_list.render(frame, sidebar_chunks[0], self.focused == FocusedPanel::Projects);
         
         let run_list = RunList::new(&self.runs, self.selected_run);
-        run_list.render(frame, sidebar_chunks[1]);
+        run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
         
         let config_panel = ConfigPanel::new(&self.current_config);
         config_panel.render(frame, sidebar_chunks[2]);

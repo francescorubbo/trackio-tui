@@ -2,7 +2,8 @@
 
 use ratatui::{
     layout::Rect,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    style::{Color, Style},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
@@ -19,14 +20,20 @@ impl<'a> ProjectList<'a> {
         ProjectList { projects, selected }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         let items: Vec<ListItem> = self.projects
             .iter()
             .map(|p| ListItem::new(format!("{} ({})", p.name, p.run_count)))
             .collect();
 
+        let block = Block::default()
+            .title(" Projects ")
+            .borders(Borders::ALL)
+            .border_type(if focused { BorderType::Double } else { BorderType::Plain })
+            .border_style(if focused { Style::default().fg(Color::Cyan) } else { Style::default() });
+
         let list = List::new(items)
-            .block(Block::default().title(" Projects ").borders(Borders::ALL))
+            .block(block)
             .highlight_symbol("> ");
 
         let mut state = ListState::default();
@@ -46,14 +53,20 @@ impl<'a> RunList<'a> {
         RunList { runs, selected }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         let items: Vec<ListItem> = self.runs
             .iter()
             .map(|r| ListItem::new(format!("{} [{}]", r.display_name(), r.status.display())))
             .collect();
 
+        let block = Block::default()
+            .title(format!(" Runs ({}) ", self.runs.len()))
+            .borders(Borders::ALL)
+            .border_type(if focused { BorderType::Double } else { BorderType::Plain })
+            .border_style(if focused { Style::default().fg(Color::Cyan) } else { Style::default() });
+
         let list = List::new(items)
-            .block(Block::default().title(format!(" Runs ({}) ", self.runs.len())).borders(Borders::ALL))
+            .block(block)
             .highlight_symbol("> ");
 
         let mut state = ListState::default();
