@@ -20,8 +20,8 @@ use crate::comparison::ComparisonState;
 use crate::data::{Config, Metric, Project, Run, Storage};
 use crate::ui::{
     chart::{MetricSelector, MetricsChart},
-    HelpOverlay,
     widgets::{ConfigPanel, ProjectList, RunList, StatusBar},
+    HelpOverlay,
 };
 
 /// Which panel is currently focused
@@ -51,7 +51,7 @@ impl FocusedPanel {
 pub struct App {
     // Configuration
     config: AppConfig,
-    
+
     // Data
     storage: Storage,
     projects: Vec<Project>,
@@ -59,23 +59,23 @@ pub struct App {
     metrics: Vec<Metric>,
     metric_names: Vec<String>,
     current_config: Vec<Config>,
-    
+
     // Comparison state
     comparison: ComparisonState,
-    
+
     // UI State
     focused: FocusedPanel,
     selected_project: usize,
     selected_run: usize,
     selected_metric: usize,
     show_help: bool,
-    
+
     // Timing
     last_refresh: Instant,
-    
+
     // Exit flag
     should_quit: bool,
-    
+
     // Error message to display (non-fatal)
     error_message: Option<String>,
 }
@@ -84,7 +84,7 @@ impl App {
     /// Create a new App instance
     pub fn new(config: AppConfig) -> Result<Self> {
         let storage = Storage::new(config.db_path.clone());
-        
+
         let mut app = App {
             config,
             storage,
@@ -103,10 +103,10 @@ impl App {
             should_quit: false,
             error_message: None,
         };
-        
+
         // Initial data load
         app.load_projects()?;
-        
+
         // If a project was specified, select it
         if let Some(ref project_name) = app.config.project {
             if let Some(idx) = app.projects.iter().position(|p| &p.name == project_name) {
@@ -116,10 +116,10 @@ impl App {
         } else if !app.projects.is_empty() {
             app.load_runs()?;
         }
-        
+
         Ok(app)
     }
-    
+
     /// Load list of projects from storage
     fn load_projects(&mut self) -> Result<()> {
         self.projects = self.storage.list_projects()?;
@@ -128,7 +128,7 @@ impl App {
         }
         Ok(())
     }
-    
+
     /// Load runs for the currently selected project.
     /// If `clear_comparison` is true, clears comparison state (used on project change).
     fn load_runs_impl(&mut self, clear_comparison: bool) -> Result<()> {
@@ -140,14 +140,14 @@ impl App {
             self.comparison.clear();
             return Ok(());
         }
-        
+
         let project = &self.projects[self.selected_project];
         self.runs = self.storage.list_runs(&project.name)?;
-        
+
         if self.selected_run >= self.runs.len() {
             self.selected_run = self.runs.len().saturating_sub(1);
         }
-        
+
         if clear_comparison {
             // Clear comparison selection when changing projects
             self.comparison.clear();
@@ -155,23 +155,23 @@ impl App {
             // Prune any invalid run indices after refresh
             self.comparison.prune_invalid_runs(self.runs.len());
         }
-        
+
         // Load metrics for selected run
         self.load_metrics()?;
-        
+
         Ok(())
     }
-    
+
     /// Load runs for the currently selected project, clearing comparison state.
     fn load_runs(&mut self) -> Result<()> {
         self.load_runs_impl(true)
     }
-    
+
     /// Reload runs without clearing comparison state (for refresh).
     fn reload_runs(&mut self) -> Result<()> {
         self.load_runs_impl(false)
     }
-    
+
     /// Load metrics for the currently selected run
     fn load_metrics(&mut self) -> Result<()> {
         if self.runs.is_empty() {
@@ -180,23 +180,23 @@ impl App {
             self.current_config.clear();
             return Ok(());
         }
-        
+
         let project = &self.projects[self.selected_project];
         let run = &self.runs[self.selected_run];
-        
+
         self.metric_names = self.storage.list_metrics(&project.name, &run.id)?;
         self.current_config = run.config.clone();
-        
+
         // Load all metrics data
         self.metrics = self.storage.get_all_metrics(&project.name, &run.id)?;
-        
+
         if self.selected_metric >= self.metric_names.len() {
             self.selected_metric = self.metric_names.len().saturating_sub(1);
         }
-        
+
         Ok(())
     }
-    
+
     /// Refresh all data without clearing comparison state
     fn refresh(&mut self) -> Result<()> {
         self.error_message = None; // Clear any previous errors
@@ -206,50 +206,50 @@ impl App {
         self.last_refresh = Instant::now();
         Ok(())
     }
-    
+
     /// Set an error message to display (non-fatal)
     pub fn set_error(&mut self, message: String) {
         self.error_message = Some(message);
     }
-    
+
     /// Load/refresh metrics for all comparison runs into the cache
     fn load_comparison_metrics(&mut self) -> Result<()> {
         if self.projects.is_empty() || self.runs.is_empty() {
             return Ok(());
         }
-        
+
         let project = &self.projects[self.selected_project];
-        
+
         for &run_idx in self.comparison.marked_runs().to_vec().iter() {
             if run_idx >= self.runs.len() {
                 continue;
             }
-            
+
             let run = &self.runs[run_idx];
             if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
                 self.comparison.cache_metrics(run_idx, metrics);
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Load metrics for a single comparison run into the cache
     fn load_single_comparison_run(&mut self, run_idx: usize) -> Result<()> {
         if self.projects.is_empty() || run_idx >= self.runs.len() {
             return Ok(());
         }
-        
+
         let project = &self.projects[self.selected_project];
         let run = &self.runs[run_idx];
-        
+
         if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
             self.comparison.cache_metrics(run_idx, metrics);
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle keyboard input
     fn handle_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
         // Global shortcuts
@@ -280,12 +280,12 @@ impl App {
             }
             _ => {}
         }
-        
+
         // If help is shown, don't process other keys
         if self.show_help {
             return Ok(());
         }
-        
+
         // Metric selection with number keys
         if let KeyCode::Char(c) = key {
             if let Some(n) = c.to_digit(10) {
@@ -295,7 +295,7 @@ impl App {
                 }
             }
         }
-        
+
         // Toggle run for comparison
         if key == KeyCode::Char('S') {
             // Shift+S: Clear all comparison selections
@@ -311,16 +311,16 @@ impl App {
             }
             return Ok(());
         }
-        
+
         // Panel-specific navigation
         match self.focused {
             FocusedPanel::Projects => self.handle_project_navigation(key)?,
             FocusedPanel::Runs => self.handle_run_navigation(key)?,
         }
-        
+
         Ok(())
     }
-    
+
     fn handle_project_navigation(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Down | KeyCode::Char('j') => {
@@ -331,7 +331,8 @@ impl App {
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if !self.projects.is_empty() {
-                    self.selected_project = self.selected_project
+                    self.selected_project = self
+                        .selected_project
                         .checked_sub(1)
                         .unwrap_or(self.projects.len() - 1);
                     self.load_runs()?;
@@ -341,7 +342,7 @@ impl App {
         }
         Ok(())
     }
-    
+
     fn handle_run_navigation(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Down | KeyCode::Char('j') => {
@@ -352,7 +353,8 @@ impl App {
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if !self.runs.is_empty() {
-                    self.selected_run = self.selected_run
+                    self.selected_run = self
+                        .selected_run
                         .checked_sub(1)
                         .unwrap_or(self.runs.len() - 1);
                     self.load_metrics()?;
@@ -365,12 +367,11 @@ impl App {
         }
         Ok(())
     }
-    
-    
+
     /// Render the UI
     fn render(&self, frame: &mut ratatui::Frame) {
         let size = frame.area();
-        
+
         // Main layout: header, body, footer
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -379,7 +380,7 @@ impl App {
                 Constraint::Length(2), // Status bar
             ])
             .split(size);
-        
+
         // Body layout: sidebar (left) and content (right)
         let body_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -388,7 +389,7 @@ impl App {
                 Constraint::Min(40),    // Content
             ])
             .split(main_chunks[0]);
-        
+
         // Sidebar layout: projects, runs, config
         let sidebar_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -398,7 +399,7 @@ impl App {
                 Constraint::Percentage(30), // Config
             ])
             .split(body_chunks[0]);
-        
+
         // Content layout: chart and metric selector
         let content_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -407,35 +408,42 @@ impl App {
                 Constraint::Length(1), // Metric selector
             ])
             .split(body_chunks[1]);
-        
+
         // Render sidebar components
         let project_list = ProjectList::new(&self.projects, self.selected_project);
-        project_list.render(frame, sidebar_chunks[0], self.focused == FocusedPanel::Projects);
-        
+        project_list.render(
+            frame,
+            sidebar_chunks[0],
+            self.focused == FocusedPanel::Projects,
+        );
+
         let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_runs());
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
-        
+
         let config_panel = ConfigPanel::new(&self.current_config);
         config_panel.render(frame, sidebar_chunks[2]);
-        
+
         // Render chart
-        let current_metric_name = self.metric_names.get(self.selected_metric)
+        let current_metric_name = self
+            .metric_names
+            .get(self.selected_metric)
             .map(|s| s.as_str())
             .unwrap_or("No metric selected");
-        
+
         // Gather metrics for display (including comparison runs)
         // Tuple: (run_name, run_idx, metric)
         let mut chart_metrics: Vec<(String, usize, &Metric)> = Vec::new();
-        
+
         // Add current run's metric
-        if let Some(metric) = self.metrics.iter()
-            .find(|m| m.name == current_metric_name) {
-            let run_name = self.runs.get(self.selected_run)
+        if let Some(metric) = self.metrics.iter().find(|m| m.name == current_metric_name) {
+            let run_name = self
+                .runs
+                .get(self.selected_run)
                 .map(|r| r.display_name())
                 .unwrap_or_default();
             chart_metrics.push((run_name, self.selected_run, metric));
         }
-        
+
         // Add comparison runs' metrics (excludes currently selected run)
         for (run_idx, metric) in self.comparison.get_comparison_metrics(self.selected_run) {
             if metric.name == current_metric_name {
@@ -444,24 +452,26 @@ impl App {
                 }
             }
         }
-        
+
         // Sort by run index to ensure consistent colors regardless of which run is selected
         chart_metrics.sort_by_key(|(_, run_idx, _)| *run_idx);
-        
+
         let chart = MetricsChart::new(&chart_metrics, current_metric_name);
         chart.render(frame, content_chunks[0]);
-        
+
         // Render metric selector
         let metric_selector = MetricSelector::new(&self.metric_names, self.selected_metric);
         metric_selector.render(frame, content_chunks[1]);
-        
+
         // Render status bar
-        let project_name = self.projects.get(self.selected_project)
+        let project_name = self
+            .projects
+            .get(self.selected_project)
             .map(|p| p.name.as_str());
         let error_msg = self.error_message.as_deref();
         let status_bar = StatusBar::new(project_name, error_msg);
         status_bar.render(frame, main_chunks[1]);
-        
+
         // Render help overlay if active
         if self.show_help {
             HelpOverlay::new().render(frame, size);
@@ -482,10 +492,12 @@ pub fn run(config: AppConfig) -> Result<()> {
     let db_path = &config.db_path;
     if !db_path.exists() {
         eprintln!("No trackio data found at: {db_path:?}");
-        eprintln!("Run some experiments with trackio first, or specify a different path with --db-path");
+        eprintln!(
+            "Run some experiments with trackio first, or specify a different path with --db-path"
+        );
         return Ok(());
     }
-    
+
     // Setup terminal
     enable_raw_mode().context("Failed to enable raw mode")?;
     let mut stdout = io::stdout();
@@ -501,7 +513,7 @@ pub fn run(config: AppConfig) -> Result<()> {
             return Err(e).context("Failed to create terminal");
         }
     };
-    
+
     // Create app - if this fails, restore terminal first
     let mut app = match App::new(config) {
         Ok(a) => a,
@@ -511,14 +523,14 @@ pub fn run(config: AppConfig) -> Result<()> {
         }
     };
     let tick_rate = Duration::from_secs(app.config.refresh_interval_secs);
-    
+
     // Main loop - wrap in a closure to ensure cleanup
     let result = run_main_loop(&mut terminal, &mut app, tick_rate);
-    
+
     // Always restore terminal, regardless of result
     restore_terminal();
     terminal.show_cursor().ok();
-    
+
     result
 }
 
@@ -531,7 +543,7 @@ fn run_main_loop(
     loop {
         // Render - if this fails, we should exit
         terminal.draw(|f| app.render(f))?;
-        
+
         // Check if it's time to refresh (ignore refresh errors, just continue)
         if app.last_refresh.elapsed() >= tick_rate {
             if let Err(e) = app.refresh() {
@@ -539,7 +551,7 @@ fn run_main_loop(
                 app.set_error(format!("Refresh error: {e}"));
             }
         }
-        
+
         // Handle input with timeout
         let timeout = tick_rate.saturating_sub(app.last_refresh.elapsed());
         if event::poll(timeout.min(Duration::from_millis(100)))? {
@@ -550,7 +562,7 @@ fn run_main_loop(
                 }
             }
         }
-        
+
         if app.should_quit {
             return Ok(());
         }

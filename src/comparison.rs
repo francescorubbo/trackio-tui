@@ -63,7 +63,10 @@ impl ComparisonState {
 
     /// Get comparison metrics for display, excluding the currently selected run.
     /// Returns an iterator of (run_idx, metric) pairs.
-    pub fn get_comparison_metrics(&self, selected_run: usize) -> impl Iterator<Item = (usize, &Metric)> {
+    pub fn get_comparison_metrics(
+        &self,
+        selected_run: usize,
+    ) -> impl Iterator<Item = (usize, &Metric)> {
         self.marked_runs
             .iter()
             .filter(move |&&run_idx| run_idx != selected_run)
@@ -84,7 +87,8 @@ impl ComparisonState {
     /// Remove runs that are no longer valid (index out of bounds)
     pub fn prune_invalid_runs(&mut self, max_run_idx: usize) {
         self.marked_runs.retain(|&run_idx| run_idx < max_run_idx);
-        self.metrics_cache.retain(|&run_idx, _| run_idx < max_run_idx);
+        self.metrics_cache
+            .retain(|&run_idx, _| run_idx < max_run_idx);
     }
 }
 
@@ -181,7 +185,7 @@ mod tests {
 
         // When selected_run is 1, we should get metrics for runs 0 and 2 only
         let comparison: Vec<(usize, &Metric)> = state.get_comparison_metrics(1).collect();
-        
+
         assert_eq!(comparison.len(), 2);
         assert!(comparison.iter().any(|(idx, _)| *idx == 0));
         assert!(comparison.iter().any(|(idx, _)| *idx == 2));
@@ -203,10 +207,10 @@ mod tests {
 
         // When selected is 1, we get all metrics from run 0
         let comparison: Vec<(usize, &Metric)> = state.get_comparison_metrics(1).collect();
-        
+
         assert_eq!(comparison.len(), 2);
         assert!(comparison.iter().all(|(idx, _)| *idx == 0));
-        
+
         let names: Vec<&str> = comparison.iter().map(|(_, m)| m.name.as_str()).collect();
         assert!(names.contains(&"loss"));
         assert!(names.contains(&"accuracy"));
@@ -260,4 +264,3 @@ mod tests {
         assert!(!state.has_comparisons());
     }
 }
-

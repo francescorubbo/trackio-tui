@@ -94,4 +94,3 @@ pub struct MetricPoint {
     pub value: f64,
     pub timestamp: Option<DateTime<Utc>>,
 }
-

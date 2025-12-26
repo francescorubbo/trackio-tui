@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse_args();
     let config = AppConfig::from_cli(&cli);
-    
+
     // Run the TUI application
     app::run(config)?;
 

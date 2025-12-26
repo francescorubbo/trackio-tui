@@ -21,25 +21,32 @@ impl HelpOverlay {
         const DESCRIPTION: &str = "A terminal dashboard for visualizing machine learning experiments tracked with trackio. Browse projects, compare runs, and monitor metrics in real-time.";
 
         let shortcuts = [
-            ("Navigation", vec![
-                ("j / ↓", "Move down in list"),
-                ("k / ↑", "Move up in list"),
-                ("Esc", "Go back / move left"),
-                ("Tab", "Cycle focus between panels"),
-                ("Shift+Tab", "Cycle focus backwards"),
-            ]),
-            ("Metrics", vec![
-                ("1-9", "Select metric by number"),
-            ]),
-            ("Comparison", vec![
-                ("s", "Toggle run for comparison"),
-                ("S", "Clear all comparisons"),
-            ]),
-            ("General", vec![
-                ("r", "Refresh data"),
-                ("h / ?", "Toggle this help"),
-                ("q", "Quit"),
-            ]),
+            (
+                "Navigation",
+                vec![
+                    ("j / ↓", "Move down in list"),
+                    ("k / ↑", "Move up in list"),
+                    ("Esc", "Go back / move left"),
+                    ("Tab", "Cycle focus between panels"),
+                    ("Shift+Tab", "Cycle focus backwards"),
+                ],
+            ),
+            ("Metrics", vec![("1-9", "Select metric by number")]),
+            (
+                "Comparison",
+                vec![
+                    ("s", "Toggle run for comparison"),
+                    ("S", "Clear all comparisons"),
+                ],
+            ),
+            (
+                "General",
+                vec![
+                    ("r", "Refresh data"),
+                    ("h / ?", "Toggle this help"),
+                    ("q", "Quit"),
+                ],
+            ),
         ];
 
         let mut text = format!("\n  {DESCRIPTION}\n\n");

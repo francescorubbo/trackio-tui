@@ -31,10 +31,12 @@ impl<'a> MetricsChart<'a> {
         }
 
         // Build points for each run
-        let chart_data: Vec<Vec<(f64, f64)>> = self.metrics
+        let chart_data: Vec<Vec<(f64, f64)>> = self
+            .metrics
             .iter()
             .map(|(_, _, metric)| {
-                metric.points
+                metric
+                    .points
                     .iter()
                     .map(|p| (p.step as f64, p.value))
                     .collect()
@@ -55,7 +57,8 @@ impl<'a> MetricsChart<'a> {
             Color::Indexed(227), // Yellow (#ffff5f)
         ];
         const MARKERS: [Marker; 3] = [Marker::Braille, Marker::Dot, Marker::Block];
-        let datasets: Vec<Dataset> = self.metrics
+        let datasets: Vec<Dataset> = self
+            .metrics
             .iter()
             .zip(chart_data.iter())
             .enumerate()
@@ -133,8 +136,12 @@ fn calculate_bounds(data: &[Vec<(f64, f64)>]) -> ((f64, f64), (f64, f64)) {
     }
 
     // Ensure valid bounds
-    if x_min >= x_max { x_max = x_min + 1.0; }
-    if y_min >= y_max { y_max = y_min + 1.0; }
+    if x_min >= x_max {
+        x_max = x_min + 1.0;
+    }
+    if y_min >= y_max {
+        y_max = y_min + 1.0;
+    }
 
     ((x_min, x_max), (y_min, y_max))
 }
@@ -151,7 +158,8 @@ impl<'a> MetricSelector<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let text: String = self.metrics
+        let text: String = self
+            .metrics
             .iter()
             .enumerate()
             .map(|(i, name)| {
@@ -177,13 +185,11 @@ mod tests {
 
     #[test]
     fn test_dataset_renders() {
-        let datasets = vec![
-            Dataset::default()
-                .name("test")
-                .marker(Marker::Braille)
-                .graph_type(GraphType::Line)
-                .data(&[(0.0, 0.0), (10.0, 10.0), (20.0, 5.0)]),
-        ];
+        let datasets = vec![Dataset::default()
+            .name("test")
+            .marker(Marker::Braille)
+            .graph_type(GraphType::Line)
+            .data(&[(0.0, 0.0), (10.0, 10.0), (20.0, 5.0)])];
 
         let chart = Chart::new(datasets)
             .x_axis(Axis::default().bounds([0.0, 25.0]))
@@ -200,10 +206,7 @@ mod tests {
 
     #[test]
     fn test_calculate_bounds() {
-        let data = vec![
-            vec![(0.0, 1.0), (5.0, 3.0)],
-            vec![(2.0, 0.5), (10.0, 2.0)],
-        ];
+        let data = vec![vec![(0.0, 1.0), (5.0, 3.0)], vec![(2.0, 0.5), (10.0, 2.0)]];
 
         let (x_bounds, y_bounds) = calculate_bounds(&data);
 

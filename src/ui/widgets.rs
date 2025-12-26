@@ -21,7 +21,8 @@ impl<'a> ProjectList<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
-        let items: Vec<ListItem> = self.projects
+        let items: Vec<ListItem> = self
+            .projects
             .iter()
             .map(|p| ListItem::new(format!("{} ({})", p.name, p.run_count)))
             .collect();
@@ -29,12 +30,18 @@ impl<'a> ProjectList<'a> {
         let block = Block::default()
             .title(" Projects ")
             .borders(Borders::ALL)
-            .border_type(if focused { BorderType::Double } else { BorderType::Plain })
-            .border_style(if focused { Style::default().fg(Color::Cyan) } else { Style::default() });
+            .border_type(if focused {
+                BorderType::Double
+            } else {
+                BorderType::Plain
+            })
+            .border_style(if focused {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            });
 
-        let list = List::new(items)
-            .block(block)
-            .highlight_symbol("> ");
+        let list = List::new(items).block(block).highlight_symbol("> ");
 
         let mut state = ListState::default();
         state.select(Some(self.selected));
@@ -51,15 +58,24 @@ pub struct RunList<'a> {
 
 impl<'a> RunList<'a> {
     pub fn new(runs: &'a [Run], selected: usize, marked: &'a [usize]) -> Self {
-        RunList { runs, selected, marked }
+        RunList {
+            runs,
+            selected,
+            marked,
+        }
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
-        let items: Vec<ListItem> = self.runs
+        let items: Vec<ListItem> = self
+            .runs
             .iter()
             .enumerate()
             .map(|(idx, r)| {
-                let prefix = if self.marked.contains(&idx) { "● " } else { "  " };
+                let prefix = if self.marked.contains(&idx) {
+                    "● "
+                } else {
+                    "  "
+                };
                 ListItem::new(format!("{}{}", prefix, r.display_name()))
             })
             .collect();
@@ -67,12 +83,18 @@ impl<'a> RunList<'a> {
         let block = Block::default()
             .title(format!(" Runs ({}) ", self.runs.len()))
             .borders(Borders::ALL)
-            .border_type(if focused { BorderType::Double } else { BorderType::Plain })
-            .border_style(if focused { Style::default().fg(Color::Cyan) } else { Style::default() });
+            .border_type(if focused {
+                BorderType::Double
+            } else {
+                BorderType::Plain
+            })
+            .border_style(if focused {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            });
 
-        let list = List::new(items)
-            .block(block)
-            .highlight_symbol("> ");
+        let list = List::new(items).block(block).highlight_symbol("> ");
 
         let mut state = ListState::default();
         state.select(Some(self.selected));
@@ -91,7 +113,8 @@ impl<'a> ConfigPanel<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let text: String = self.config
+        let text: String = self
+            .config
             .iter()
             .map(|c| format!("{}: {}", c.key, c.value))
             .collect::<Vec<_>>()
@@ -126,8 +149,7 @@ impl<'a> StatusBar<'a> {
             }
         };
 
-        let paragraph = Paragraph::new(text)
-            .block(Block::default().borders(Borders::TOP));
+        let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::TOP));
 
         frame.render_widget(paragraph, area);
     }
