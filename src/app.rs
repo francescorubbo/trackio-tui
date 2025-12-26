@@ -1,5 +1,6 @@
 //! Main application logic and TUI event loop.
 
+use std::collections::HashMap;
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,88 @@ use crate::ui::{
     HelpOverlay, Theme,
     widgets::{ConfigPanel, ProjectList, RunList, StatusBar},
 };
+
+/// Manages run comparison state and cached metrics
+#[derive(Debug, Default)]
+pub struct ComparisonState {
+    /// Run indices marked for comparison
+    marked_runs: Vec<usize>,
+    /// Cached metrics for comparison, keyed by run index
+    metrics_cache: HashMap<usize, Vec<Metric>>,
+}
+
+impl ComparisonState {
+    /// Create a new empty comparison state
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Toggle a run's comparison status. Returns true if run is now marked.
+    pub fn toggle_run(&mut self, run_idx: usize) -> bool {
+        if let Some(pos) = self.marked_runs.iter().position(|&r| r == run_idx) {
+            self.marked_runs.remove(pos);
+            self.metrics_cache.remove(&run_idx);
+            false
+        } else {
+            self.marked_runs.push(run_idx);
+            true
+        }
+    }
+
+    /// Check if a run is marked for comparison
+    #[allow(dead_code)] // Used in tests
+    pub fn is_marked(&self, run_idx: usize) -> bool {
+        self.marked_runs.contains(&run_idx)
+    }
+
+    /// Get the list of marked run indices
+    pub fn marked_runs(&self) -> &[usize] {
+        &self.marked_runs
+    }
+
+    /// Clear all comparison state
+    pub fn clear(&mut self) {
+        self.marked_runs.clear();
+        self.metrics_cache.clear();
+    }
+
+    /// Cache metrics for a run
+    pub fn cache_metrics(&mut self, run_idx: usize, metrics: Vec<Metric>) {
+        self.metrics_cache.insert(run_idx, metrics);
+    }
+
+    /// Get cached metrics for a specific run
+    #[allow(dead_code)] // Used in tests
+    pub fn get_cached_metrics(&self, run_idx: usize) -> Option<&Vec<Metric>> {
+        self.metrics_cache.get(&run_idx)
+    }
+
+    /// Get comparison metrics for display, excluding the currently selected run.
+    /// Returns an iterator of (run_idx, metric) pairs.
+    pub fn get_comparison_metrics(&self, selected_run: usize) -> impl Iterator<Item = (usize, &Metric)> {
+        self.marked_runs
+            .iter()
+            .filter(move |&&run_idx| run_idx != selected_run)
+            .flat_map(|&run_idx| {
+                self.metrics_cache
+                    .get(&run_idx)
+                    .into_iter()
+                    .flat_map(move |metrics| metrics.iter().map(move |m| (run_idx, m)))
+            })
+    }
+
+    /// Check if there are any runs marked for comparison
+    #[allow(dead_code)] // Used in tests
+    pub fn has_comparisons(&self) -> bool {
+        !self.marked_runs.is_empty()
+    }
+
+    /// Remove runs that are no longer valid (index out of bounds)
+    pub fn prune_invalid_runs(&mut self, max_run_idx: usize) {
+        self.marked_runs.retain(|&run_idx| run_idx < max_run_idx);
+        self.metrics_cache.retain(|&run_idx, _| run_idx < max_run_idx);
+    }
+}
 
 /// Which panel is currently focused
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,14 +145,15 @@ pub struct App {
     metrics: Vec<Metric>,
     metric_names: Vec<String>,
     current_config: Vec<Config>,
-    comparison_metrics: Vec<Metric>, // Metrics from comparison runs
+    
+    // Comparison state
+    comparison: ComparisonState,
     
     // UI State
     focused: FocusedPanel,
     selected_project: usize,
     selected_run: usize,
     selected_metric: usize,
-    comparison_runs: Vec<usize>,
     show_help: bool,
     
     // Chart settings
@@ -100,12 +184,11 @@ impl App {
             metrics: Vec::new(),
             metric_names: Vec::new(),
             current_config: Vec::new(),
-            comparison_metrics: Vec::new(),
+            comparison: ComparisonState::new(),
             focused: FocusedPanel::Projects,
             selected_project: 0,
             selected_run: 0,
             selected_metric: 0,
-            comparison_runs: Vec::new(),
             show_help: false,
             chart_config: ChartConfig::default(),
             last_refresh: Instant::now(),
@@ -138,13 +221,15 @@ impl App {
         Ok(())
     }
     
-    /// Load runs for the currently selected project
-    fn load_runs(&mut self) -> Result<()> {
+    /// Load runs for the currently selected project.
+    /// If `clear_comparison` is true, clears comparison state (used on project change).
+    fn load_runs_impl(&mut self, clear_comparison: bool) -> Result<()> {
         if self.projects.is_empty() {
             self.runs.clear();
             self.metrics.clear();
             self.metric_names.clear();
             self.current_config.clear();
+            self.comparison.clear();
             return Ok(());
         }
         
@@ -155,13 +240,28 @@ impl App {
             self.selected_run = self.runs.len().saturating_sub(1);
         }
         
-        // Clear comparison selection when changing projects
-        self.comparison_runs.clear();
+        if clear_comparison {
+            // Clear comparison selection when changing projects
+            self.comparison.clear();
+        } else {
+            // Prune any invalid run indices after refresh
+            self.comparison.prune_invalid_runs(self.runs.len());
+        }
         
         // Load metrics for selected run
         self.load_metrics()?;
         
         Ok(())
+    }
+    
+    /// Load runs for the currently selected project, clearing comparison state.
+    fn load_runs(&mut self) -> Result<()> {
+        self.load_runs_impl(true)
+    }
+    
+    /// Reload runs without clearing comparison state (for refresh).
+    fn reload_runs(&mut self) -> Result<()> {
+        self.load_runs_impl(false)
     }
     
     /// Load metrics for the currently selected run
@@ -189,11 +289,11 @@ impl App {
         Ok(())
     }
     
-    /// Refresh all data
+    /// Refresh all data without clearing comparison state
     fn refresh(&mut self) -> Result<()> {
         self.error_message = None; // Clear any previous errors
         self.load_projects()?;
-        self.load_runs()?;
+        self.reload_runs()?; // Use reload_runs to preserve comparison state
         self.load_comparison_metrics()?;
         self.last_refresh = Instant::now();
         Ok(())
@@ -204,32 +304,46 @@ impl App {
         self.error_message = Some(message);
     }
     
-    /// Load metrics for comparison runs
+    /// Load/refresh metrics for all comparison runs into the cache
     fn load_comparison_metrics(&mut self) -> Result<()> {
-        self.comparison_metrics.clear();
-        
         if self.projects.is_empty() || self.runs.is_empty() {
             return Ok(());
         }
         
         let project = &self.projects[self.selected_project];
         
-        for &run_idx in &self.comparison_runs {
-            if run_idx >= self.runs.len() || run_idx == self.selected_run {
+        for &run_idx in self.comparison.marked_runs().to_vec().iter() {
+            if run_idx >= self.runs.len() {
                 continue;
             }
             
             let run = &self.runs[run_idx];
             if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
-                self.comparison_metrics.extend(metrics);
+                self.comparison.cache_metrics(run_idx, metrics);
             }
         }
         
         Ok(())
     }
     
+    /// Load metrics for a single comparison run into the cache
+    fn load_single_comparison_run(&mut self, run_idx: usize) -> Result<()> {
+        if self.projects.is_empty() || run_idx >= self.runs.len() {
+            return Ok(());
+        }
+        
+        let project = &self.projects[self.selected_project];
+        let run = &self.runs[run_idx];
+        
+        if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
+            self.comparison.cache_metrics(run_idx, metrics);
+        }
+        
+        Ok(())
+    }
+    
     /// Handle keyboard input
-    fn handle_input(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Result<()> {
+    fn handle_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
         // Global shortcuts
         match key {
             KeyCode::Char('q') => {
@@ -314,20 +428,17 @@ impl App {
         }
         
         // Toggle run for comparison
-        if key == KeyCode::Char('s') {
-            if modifiers.contains(KeyModifiers::SHIFT) {
-                // Clear all comparison selections
-                self.comparison_runs.clear();
-                self.comparison_metrics.clear();
-            } else if self.focused == FocusedPanel::Runs {
-                // Toggle current run in comparison
-                if let Some(pos) = self.comparison_runs.iter().position(|&r| r == self.selected_run) {
-                    self.comparison_runs.remove(pos);
-                } else {
-                    self.comparison_runs.push(self.selected_run);
-                }
-                // Reload comparison metrics
-                self.load_comparison_metrics()?;
+        if key == KeyCode::Char('S') {
+            // Shift+S: Clear all comparison selections
+            self.comparison.clear();
+            return Ok(());
+        }
+        if key == KeyCode::Char('s') && self.focused == FocusedPanel::Runs {
+            // s: Toggle current run in comparison
+            let was_added = self.comparison.toggle_run(self.selected_run);
+            if was_added {
+                // Load metrics for the newly added run
+                self.load_single_comparison_run(self.selected_run)?;
             }
             return Ok(());
         }
@@ -467,7 +578,7 @@ impl App {
         let run_list = RunList::new(
             &self.runs,
             self.selected_run,
-            &self.comparison_runs,
+            self.comparison.marked_runs(),
             &self.theme,
         );
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
@@ -492,14 +603,11 @@ impl App {
             chart_metrics.push((run_name, metric));
         }
         
-        // Add comparison runs' metrics
-        let metrics_per_run = self.metric_names.len().max(1);
-        for (i, metric) in self.comparison_metrics.iter().enumerate() {
+        // Add comparison runs' metrics (excludes currently selected run)
+        for (run_idx, metric) in self.comparison.get_comparison_metrics(self.selected_run) {
             if metric.name == current_metric_name {
-                if let Some(&run_idx) = self.comparison_runs.get(i / metrics_per_run) {
-                    if let Some(run) = self.runs.get(run_idx) {
-                        chart_metrics.push((format!("{}*", run.display_name()), metric));
-                    }
+                if let Some(run) = self.runs.get(run_idx) {
+                    chart_metrics.push((format!("{}*", run.display_name()), metric));
                 }
             }
         }
@@ -626,6 +734,179 @@ fn run_main_loop(
         if app.should_quit {
             return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::{Metric, MetricPoint};
+
+    fn make_metric(name: &str, values: &[f64]) -> Metric {
+        Metric {
+            name: name.to_string(),
+            points: values
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| MetricPoint {
+                    step: i as i64,
+                    value: v,
+                    timestamp: None,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_toggle_run_adds_and_removes() {
+        let mut state = ComparisonState::new();
+
+        // Initially empty
+        assert!(!state.is_marked(0));
+        assert!(state.marked_runs().is_empty());
+
+        // Toggle on
+        let added = state.toggle_run(0);
+        assert!(added);
+        assert!(state.is_marked(0));
+        assert_eq!(state.marked_runs(), &[0]);
+
+        // Toggle off
+        let added = state.toggle_run(0);
+        assert!(!added);
+        assert!(!state.is_marked(0));
+        assert!(state.marked_runs().is_empty());
+    }
+
+    #[test]
+    fn test_multiple_runs_marked() {
+        let mut state = ComparisonState::new();
+
+        state.toggle_run(1);
+        state.toggle_run(3);
+        state.toggle_run(5);
+
+        assert!(!state.is_marked(0));
+        assert!(state.is_marked(1));
+        assert!(!state.is_marked(2));
+        assert!(state.is_marked(3));
+        assert!(!state.is_marked(4));
+        assert!(state.is_marked(5));
+        assert_eq!(state.marked_runs(), &[1, 3, 5]);
+    }
+
+    #[test]
+    fn test_clear_removes_all() {
+        let mut state = ComparisonState::new();
+
+        state.toggle_run(0);
+        state.toggle_run(1);
+        state.cache_metrics(0, vec![make_metric("loss", &[1.0, 0.5])]);
+        state.cache_metrics(1, vec![make_metric("loss", &[0.9, 0.4])]);
+
+        assert!(state.has_comparisons());
+        assert!(state.get_cached_metrics(0).is_some());
+
+        state.clear();
+
+        assert!(!state.has_comparisons());
+        assert!(state.marked_runs().is_empty());
+        assert!(state.get_cached_metrics(0).is_none());
+        assert!(state.get_cached_metrics(1).is_none());
+    }
+
+    #[test]
+    fn test_get_comparison_metrics_excludes_selected() {
+        let mut state = ComparisonState::new();
+
+        // Mark runs 0, 1, 2
+        state.toggle_run(0);
+        state.toggle_run(1);
+        state.toggle_run(2);
+
+        state.cache_metrics(0, vec![make_metric("loss", &[1.0])]);
+        state.cache_metrics(1, vec![make_metric("loss", &[0.9])]);
+        state.cache_metrics(2, vec![make_metric("loss", &[0.8])]);
+
+        // When selected_run is 1, we should get metrics for runs 0 and 2 only
+        let comparison: Vec<(usize, &Metric)> = state.get_comparison_metrics(1).collect();
+        
+        assert_eq!(comparison.len(), 2);
+        assert!(comparison.iter().any(|(idx, _)| *idx == 0));
+        assert!(comparison.iter().any(|(idx, _)| *idx == 2));
+        assert!(!comparison.iter().any(|(idx, _)| *idx == 1));
+    }
+
+    #[test]
+    fn test_get_comparison_metrics_with_multiple_metrics_per_run() {
+        let mut state = ComparisonState::new();
+
+        state.toggle_run(0);
+        state.cache_metrics(
+            0,
+            vec![
+                make_metric("loss", &[1.0, 0.5]),
+                make_metric("accuracy", &[0.5, 0.8]),
+            ],
+        );
+
+        // When selected is 1, we get all metrics from run 0
+        let comparison: Vec<(usize, &Metric)> = state.get_comparison_metrics(1).collect();
+        
+        assert_eq!(comparison.len(), 2);
+        assert!(comparison.iter().all(|(idx, _)| *idx == 0));
+        
+        let names: Vec<&str> = comparison.iter().map(|(_, m)| m.name.as_str()).collect();
+        assert!(names.contains(&"loss"));
+        assert!(names.contains(&"accuracy"));
+    }
+
+    #[test]
+    fn test_prune_invalid_runs() {
+        let mut state = ComparisonState::new();
+
+        state.toggle_run(0);
+        state.toggle_run(3);
+        state.toggle_run(5);
+        state.cache_metrics(0, vec![make_metric("loss", &[1.0])]);
+        state.cache_metrics(3, vec![make_metric("loss", &[0.9])]);
+        state.cache_metrics(5, vec![make_metric("loss", &[0.8])]);
+
+        // Prune to max index 4 (runs 0, 1, 2, 3 are valid; 5 is invalid)
+        state.prune_invalid_runs(4);
+
+        assert!(state.is_marked(0));
+        assert!(state.is_marked(3));
+        assert!(!state.is_marked(5));
+        assert!(state.get_cached_metrics(0).is_some());
+        assert!(state.get_cached_metrics(3).is_some());
+        assert!(state.get_cached_metrics(5).is_none());
+    }
+
+    #[test]
+    fn test_toggle_removes_cached_metrics() {
+        let mut state = ComparisonState::new();
+
+        state.toggle_run(0);
+        state.cache_metrics(0, vec![make_metric("loss", &[1.0])]);
+        assert!(state.get_cached_metrics(0).is_some());
+
+        // Toggle off should also remove cached metrics
+        state.toggle_run(0);
+        assert!(state.get_cached_metrics(0).is_none());
+    }
+
+    #[test]
+    fn test_has_comparisons() {
+        let mut state = ComparisonState::new();
+
+        assert!(!state.has_comparisons());
+
+        state.toggle_run(0);
+        assert!(state.has_comparisons());
+
+        state.toggle_run(0);
+        assert!(!state.has_comparisons());
     }
 }
 
