@@ -141,10 +141,10 @@ impl<'a> StatusBar<'a> {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         let text = if let Some(e) = self.error {
-            format!("Error: {}", e)
+            format!("Error: {e}")
         } else {
             match self.project {
-                Some(p) => format!("trackio-tui: {} | [h] Help [q] Quit", p),
+                Some(p) => format!("trackio-tui: {p} | [h] Help [q] Quit"),
                 None => "trackio-tui | [h] Help [q] Quit".to_string(),
             }
         };
