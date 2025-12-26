@@ -19,16 +19,34 @@ Install with a single command (Linux/macOS):
 curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash
 ```
 
-This installs to `~/.local/bin` by default (no sudo required). Make sure it's in your PATH:
+This installs the latest stable release to `~/.local/bin` by default (no sudo required). Make sure it's in your PATH:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-To install system-wide to `/usr/local/bin` instead:
+**Install options:**
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Install to `/usr/local/bin` (requires sudo) |
+| `--pre` | Include pre-releases when finding latest version |
+| `--version <tag>` | Install a specific version |
+
+**Examples:**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash -s -- --system
+# Install latest stable release
+curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash
+
+# Install latest pre-release
+curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash -s -- --pre
+
+# Install specific version
+curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash -s -- --version v0.1.0
+
+# System-wide install of a pre-release
+curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash -s -- --pre --system
 ```
 
 For Windows, download the `.zip` from the [releases page](https://github.com/francescorubbo/trackio-tui/releases).
