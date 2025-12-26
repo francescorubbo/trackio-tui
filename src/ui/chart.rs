@@ -15,16 +15,29 @@ use super::theme::Theme;
 #[cfg(test)]
 use crate::data::MetricPoint;
 
+/// Metric data selected for display.
+type RunMetric<'a> = (String, usize, &'a Metric);
+
+/// A single point in a chart series (step, value).
+type SeriesPoint = (f64, f64);
+
+/// Render-ready series with color and points.
+#[derive(Debug, Clone)]
+struct ChartSeries {
+    color: Color,
+    points: Vec<SeriesPoint>,
+}
+
 /// Metrics chart widget for displaying line plots
 pub struct MetricsChart<'a> {
-    metrics: &'a [(String, usize, &'a Metric)], // (run_name, run_idx, metric)
+    metrics: &'a [RunMetric<'a>], // (run_name, run_idx, metric)
     title: &'a str,
     theme: &'a Theme,
 }
 
 impl<'a> MetricsChart<'a> {
     pub fn new(
-        metrics: &'a [(String, usize, &'a Metric)],
+        metrics: &'a [RunMetric<'a>],
         title: &'a str,
         theme: &'a Theme,
     ) -> Self {
@@ -37,19 +50,8 @@ impl<'a> MetricsChart<'a> {
             return;
         }
 
-        // Step 1: Convert metric points directly to chart data format
-        // Each entry is (run_idx, color, data_points)
-        let chart_data: Vec<(usize, ratatui::style::Color, Vec<(f64, f64)>)> = self.metrics
-            .iter()
-            .map(|(_, run_idx, metric)| {
-                let color = self.theme.chart_color(*run_idx);
-                let points: Vec<(f64, f64)> = metric.points
-                    .iter()
-                    .map(|p| (p.step as f64, p.value))
-                    .collect();
-                (*run_idx, color, points)
-            })
-            .collect();
+        // Step 1: Convert metric points into render-friendly series structs
+        let chart_data: Vec<ChartSeries> = self.build_series_data();
 
         // Step 2: Calculate bounds from all data
         let (x_bounds, y_bounds) = calculate_bounds(&chart_data);
@@ -58,10 +60,13 @@ impl<'a> MetricsChart<'a> {
         let datasets: Vec<Dataset> = self.metrics
             .iter()
             .zip(chart_data.iter())
-            .map(|((run_name, _, _), (_, color, points))| {
+            .map(|((run_name, _, _), series)| {
                 // Create colored label for legend (only show if multiple runs)
                 let label: Line = if self.metrics.len() > 1 {
-                    Line::from(Span::styled(run_name.clone(), Style::default().fg(*color)))
+                    Line::from(Span::styled(
+                        run_name.clone(),
+                        Style::default().fg(series.color),
+                    ))
                 } else {
                     Line::from("")
                 };
@@ -70,8 +75,8 @@ impl<'a> MetricsChart<'a> {
                     .name(label)
                     .marker(Marker::Braille)
                     .graph_type(GraphType::Line)
-                    .style(Style::default().fg(*color))
-                    .data(points)
+                    .style(Style::default().fg(series.color))
+                    .data(&series.points)
             })
             .collect();
 
@@ -148,19 +153,36 @@ impl<'a> MetricsChart<'a> {
 
         frame.render_widget(message, inner);
     }
+
+    /// Build chart series from metrics with explicit structure instead of tuples
+    fn build_series_data(&self) -> Vec<ChartSeries> {
+        self.metrics
+            .iter()
+            .map(|(_, run_idx, metric)| {
+                let points: Vec<SeriesPoint> = metric
+                    .points
+                    .iter()
+                    .map(|p| (p.step as f64, p.value))
+                    .collect();
+
+                ChartSeries {
+                    color: self.theme.chart_color(*run_idx),
+                    points,
+                }
+            })
+            .collect()
+    }
 }
 
 /// Calculate X and Y bounds from chart data with padding
-fn calculate_bounds(
-    data: &[(usize, ratatui::style::Color, Vec<(f64, f64)>)]
-) -> ((f64, f64), (f64, f64)) {
+fn calculate_bounds(data: &[ChartSeries]) -> ((f64, f64), (f64, f64)) {
     let mut x_min = f64::MAX;
     let mut x_max = f64::MIN;
     let mut y_min = f64::MAX;
     let mut y_max = f64::MIN;
 
-    for (_, _, points) in data {
-        for &(x, y) in points {
+    for series in data {
+        for &(x, y) in &series.points {
             x_min = x_min.min(x);
             x_max = x_max.max(x);
             y_min = y_min.min(y);
@@ -246,9 +268,9 @@ fn format_value(value: f64) -> String {
 /// Returns Vec of (run_name, run_idx, assigned_color)
 #[cfg(test)]
 pub fn get_color_assignments(
-    metrics: &[(String, usize, &Metric)],
+    metrics: &[RunMetric<'_>],
     theme: &Theme,
-) -> Vec<(String, usize, ratatui::style::Color)> {
+) -> Vec<(String, usize, Color)> {
     metrics
         .iter()
         .map(|(run_name, run_idx, _)| {
@@ -440,8 +462,7 @@ mod tests {
 
         assert!(
             has_expected_color,
-            "Legend text should be rendered with the dataset color {:?}",
-            expected_color
+            "Legend text should be rendered with the dataset color {expected_color:?}"
         );
     }
 
@@ -454,7 +475,7 @@ mod tests {
         for (i, expected_color) in colors.iter().enumerate() {
             let datasets = vec![
                 Dataset::default()
-                    .name(format!("run_{}", i))
+                    .name(format!("run_{i}"))
                     .marker(Marker::Braille)
                     .graph_type(GraphType::Line)
                     .style(Style::default().fg(*expected_color))
@@ -478,8 +499,7 @@ mod tests {
 
             assert!(
                 found_colors.contains(expected_color),
-                "Chart {} should render with color {:?}, but found: {:?}",
-                i, expected_color, found_colors
+                "Chart {i} should render with color {expected_color:?}, but found: {found_colors:?}"
             );
         }
     }

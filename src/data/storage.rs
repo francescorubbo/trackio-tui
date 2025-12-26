@@ -345,7 +345,7 @@ mod tests {
             ConfigValue::Int(42)
         ));
         assert!(matches!(
-            json_to_config_value(serde_json::json!(3.14)),
+            json_to_config_value(serde_json::json!(std::f64::consts::PI)),
             ConfigValue::Float(_)
         ));
         assert!(matches!(

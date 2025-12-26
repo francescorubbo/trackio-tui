@@ -149,8 +149,7 @@ mod tests {
             let gray_colors = [Color::Gray, Color::DarkGray, Color::White, Color::Black];
             assert!(
                 !gray_colors.contains(color),
-                "Chart color {i} should not be a gray shade: {:?}",
-                color
+                "Chart color {i} should not be a gray shade: {color:?}"
             );
         }
     }
