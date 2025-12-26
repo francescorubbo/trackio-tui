@@ -45,8 +45,14 @@ impl<'a> MetricsChart<'a> {
         let (x_bounds, y_bounds) = calculate_bounds(&chart_data);
 
         // Create datasets
+        // Colorblind-friendly palette (256-color approximation of Wong palette)
         const COLORS: [Color; 6] = [
-            Color::Red, Color::Green, Color::Yellow, Color::Blue, Color::Magenta, Color::Cyan,
+            Color::Indexed(32),  // Blue (#0087d7)
+            Color::Indexed(214), // Orange (#ffaf00)
+            Color::Indexed(36),  // Teal (#00af87)
+            Color::Indexed(175), // Pink (#d787af)
+            Color::Indexed(117), // Sky blue (#87d7ff)
+            Color::Indexed(227), // Yellow (#ffff5f)
         ];
         const MARKERS: [Marker; 3] = [Marker::Braille, Marker::Dot, Marker::Block];
         let datasets: Vec<Dataset> = self.metrics
