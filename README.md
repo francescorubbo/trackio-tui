@@ -16,18 +16,40 @@ A Rust-based Terminal User Interface for visualizing [trackio](https://github.co
 
 ## Installation
 
-### From Source
+### Pre-built Binaries
+
+Install with a single command (Linux/macOS):
 
 ```bash
-git clone https://github.com/yourusername/trackio-tui.git
-cd trackio-tui
-cargo install --path .
+curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash
 ```
+
+This installs to `~/.local/bin` by default (no sudo required). Make sure it's in your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To install system-wide to `/usr/local/bin` instead:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/francescorubbo/trackio-tui/main/install.sh | bash -s -- --system
+```
+
+For Windows, download the `.zip` from the [releases page](https://github.com/francescorubbo/trackio-tui/releases).
 
 ### Using Cargo
 
 ```bash
 cargo install trackio-tui
+```
+
+### From Source
+
+```bash
+git clone https://github.com/francescorubbo/trackio-tui.git
+cd trackio-tui
+cargo install --path .
 ```
 
 ## Usage
