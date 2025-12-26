@@ -2,6 +2,7 @@
 
 use ratatui::{
     layout::Rect,
+    style::{Color, Style},
     symbols::Marker,
     widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, LegendPosition},
     Frame,
@@ -44,14 +45,20 @@ impl<'a> MetricsChart<'a> {
         let (x_bounds, y_bounds) = calculate_bounds(&chart_data);
 
         // Create datasets
+        const COLORS: [Color; 6] = [
+            Color::Red, Color::Green, Color::Yellow, Color::Blue, Color::Magenta, Color::Cyan,
+        ];
+        const MARKERS: [Marker; 3] = [Marker::Braille, Marker::Dot, Marker::Block];
         let datasets: Vec<Dataset> = self.metrics
             .iter()
             .zip(chart_data.iter())
-            .map(|((run_name, _, _), points)| {
+            .enumerate()
+            .map(|(i, ((run_name, _, _), points))| {
                 Dataset::default()
                     .name(run_name.clone())
-                    .marker(Marker::Braille)
+                    .marker(MARKERS[(i / COLORS.len()) % MARKERS.len()])
                     .graph_type(GraphType::Line)
+                    .style(Style::default().fg(COLORS[i % COLORS.len()]))
                     .data(points)
             })
             .collect();
