@@ -46,17 +46,22 @@ impl<'a> ProjectList<'a> {
 pub struct RunList<'a> {
     runs: &'a [Run],
     selected: usize,
+    marked: &'a [usize],
 }
 
 impl<'a> RunList<'a> {
-    pub fn new(runs: &'a [Run], selected: usize) -> Self {
-        RunList { runs, selected }
+    pub fn new(runs: &'a [Run], selected: usize, marked: &'a [usize]) -> Self {
+        RunList { runs, selected, marked }
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         let items: Vec<ListItem> = self.runs
             .iter()
-            .map(|r| ListItem::new(r.display_name()))
+            .enumerate()
+            .map(|(idx, r)| {
+                let prefix = if self.marked.contains(&idx) { "● " } else { "  " };
+                ListItem::new(format!("{}{}", prefix, r.display_name()))
+            })
             .collect();
 
         let block = Block::default()

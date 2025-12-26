@@ -412,7 +412,7 @@ impl App {
         let project_list = ProjectList::new(&self.projects, self.selected_project);
         project_list.render(frame, sidebar_chunks[0], self.focused == FocusedPanel::Projects);
         
-        let run_list = RunList::new(&self.runs, self.selected_run);
+        let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_runs());
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
         
         let config_panel = ConfigPanel::new(&self.current_config);
