@@ -445,6 +445,9 @@ impl App {
             }
         }
         
+        // Sort by run index to ensure consistent colors regardless of which run is selected
+        chart_metrics.sort_by_key(|(_, run_idx, _)| *run_idx);
+        
         let chart = MetricsChart::new(&chart_metrics, current_metric_name);
         chart.render(frame, content_chunks[0]);
         
