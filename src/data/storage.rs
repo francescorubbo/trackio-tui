@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OpenFlags, Row};
 
-use super::models::{Config, ConfigValue, Metric, MetricPoint, Project, Run, RunStatus};
+use super::models::{Config, ConfigValue, Metric, MetricPoint, Project, Run};
 
 /// Helper to read a column that might be stored as TEXT or BLOB
 /// Trackio uses orjson which can write JSON as bytes (BLOB) rather than text
@@ -155,47 +155,16 @@ impl Storage {
                 .map(|dt| dt.with_timezone(&Utc))
                 .ok();
 
-            // Check if run is still active (has recent metrics)
-            let status = self.get_run_status(&conn, &run_name)?;
-
             runs.push(Run {
                 id: run_name.clone(),
                 project: project.to_string(),
                 name: Some(run_name),
-                status,
                 created_at,
-                finished_at: None, // Not tracked in schema
                 config,
             });
         }
 
         Ok(runs)
-    }
-
-    /// Determine if a run is still active
-    fn get_run_status(&self, conn: &Connection, run_name: &str) -> Result<RunStatus> {
-        // Check the most recent metric timestamp
-        let last_timestamp: Option<String> = conn
-            .query_row(
-                "SELECT MAX(timestamp) FROM metrics WHERE run_name = ?",
-                [run_name],
-                |row| row.get(0),
-            )
-            .ok();
-
-        if let Some(ts) = last_timestamp {
-            if let Ok(dt) = DateTime::parse_from_rfc3339(&ts)
-                .or_else(|_| DateTime::parse_from_str(&ts, "%Y-%m-%dT%H:%M:%S%.f"))
-            {
-                let age = Utc::now() - dt.with_timezone(&Utc);
-                // Consider "running" if updated within the last 30 seconds
-                if age.num_seconds() < 30 {
-                    return Ok(RunStatus::Running);
-                }
-            }
-        }
-
-        Ok(RunStatus::Finished)
     }
 
     /// Get all metric names for a run

@@ -56,7 +56,7 @@ impl<'a> RunList<'a> {
     pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         let items: Vec<ListItem> = self.runs
             .iter()
-            .map(|r| ListItem::new(format!("{} [{}]", r.display_name(), r.status.display())))
+            .map(|r| ListItem::new(r.display_name()))
             .collect();
 
         let block = Block::default()
