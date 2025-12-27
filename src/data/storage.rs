@@ -168,24 +168,26 @@ impl Storage {
     pub fn list_metrics(&self, project: &str, run_id: &str) -> Result<Vec<String>> {
         let conn = self.open_project_db(project)?;
 
-        // Get a sample metrics JSON to extract available metric names
-        let metrics_json: Option<String> = conn
-            .query_row(
-                "SELECT metrics FROM metrics WHERE run_name = ? LIMIT 1",
-                [run_id],
-                |row| get_string_or_blob(row, 0),
-            )
-            .ok();
+        // Scan all metrics rows to collect all unique metric names
+        // (different metrics may be logged at different times during the run)
+        let mut stmt = conn.prepare("SELECT metrics FROM metrics WHERE run_name = ?")?;
 
-        if let Some(json) = metrics_json {
-            if let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&json) {
-                let mut names: Vec<String> = map.keys().cloned().collect();
-                names.sort();
-                return Ok(names);
+        let mut metric_names = std::collections::HashSet::new();
+
+        let row_iter = stmt.query_map([run_id], |row| get_string_or_blob(row, 0))?;
+
+        for row in row_iter {
+            if let Ok(json) = row {
+                if let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&json)
+                {
+                    metric_names.extend(map.keys().cloned());
+                }
             }
         }
 
-        Ok(Vec::new())
+        let mut names: Vec<String> = metric_names.into_iter().collect();
+        names.sort();
+        Ok(names)
     }
 
     /// Get metric data for a specific run and metric name
