@@ -11,6 +11,55 @@ use ratatui::{
 
 use crate::data::{Config, Project, Run};
 
+/// Find case-insensitive matches, returning byte ranges in the original string.
+/// Handles Unicode correctly by mapping lowercase byte positions back to original positions.
+fn case_insensitive_byte_ranges(line: &str, query: &str) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let line_lower = line.to_lowercase();
+    let query_lower = query.to_lowercase();
+
+    // Fast path: if byte lengths are equal, positions are compatible
+    if line.len() == line_lower.len() {
+        return line_lower
+            .match_indices(&query_lower)
+            .map(|(start, s)| (start, start + s.len()))
+            .collect();
+    }
+
+    // Slow path: build byte position mapping from lowercase to original
+    let mut lower_to_orig: Vec<usize> = Vec::with_capacity(line_lower.len() + 1);
+    let mut orig_idx = 0;
+
+    for c in line.chars() {
+        let orig_len = c.len_utf8();
+        let lower_str: String = c.to_lowercase().collect();
+        for _ in 0..lower_str.len() {
+            lower_to_orig.push(orig_idx);
+        }
+        orig_idx += orig_len;
+    }
+    lower_to_orig.push(orig_idx); // sentinel for end position
+
+    line_lower
+        .match_indices(&query_lower)
+        .filter_map(|(start, s)| {
+            let end = start + s.len();
+            // Ensure indices are in bounds
+            if end <= lower_to_orig.len() {
+                Some((
+                    lower_to_orig[start],
+                    lower_to_orig[end.min(lower_to_orig.len() - 1)],
+                ))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// Project list panel widget
 pub struct ProjectList<'a> {
     projects: &'a [Project],
@@ -55,15 +104,15 @@ impl<'a> ProjectList<'a> {
 pub struct RunList<'a> {
     runs: &'a [Run],
     selected: usize,
-    marked: &'a HashSet<usize>,
+    marked_ids: &'a HashSet<String>,
 }
 
 impl<'a> RunList<'a> {
-    pub fn new(runs: &'a [Run], selected: usize, marked: &'a HashSet<usize>) -> Self {
+    pub fn new(runs: &'a [Run], selected: usize, marked_ids: &'a HashSet<String>) -> Self {
         RunList {
             runs,
             selected,
-            marked,
+            marked_ids,
         }
     }
 
@@ -71,9 +120,8 @@ impl<'a> RunList<'a> {
         let items: Vec<ListItem> = self
             .runs
             .iter()
-            .enumerate()
-            .map(|(idx, r)| {
-                let prefix = if self.marked.contains(&idx) {
+            .map(|r| {
+                let prefix = if self.marked_ids.contains(&r.id) {
                     "● "
                 } else {
                     "  "
@@ -105,6 +153,7 @@ impl<'a> RunList<'a> {
 }
 
 /// Config panel state for scrolling and search
+#[derive(Debug, Default)]
 pub struct ConfigPanelState {
     pub scroll_v: u16,
     pub scroll_h: u16,
@@ -112,6 +161,23 @@ pub struct ConfigPanelState {
     pub search_active: bool,
     pub match_indices: Vec<usize>,
     pub current_match: usize,
+}
+
+impl ConfigPanelState {
+    /// Create a new ConfigPanelState with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Reset scroll and search state (call when changing runs)
+    pub fn reset(&mut self) {
+        self.scroll_v = 0;
+        self.scroll_h = 0;
+        self.search.clear();
+        self.search_active = false;
+        self.match_indices.clear();
+        self.current_match = 0;
+    }
 }
 
 /// Config panel widget
@@ -147,17 +213,15 @@ impl<'a> ConfigPanel<'a> {
                     .is_some_and(|&m| m == idx);
 
                 if !self.state.search.is_empty() && is_match_line {
-                    // Highlight matching text
-                    let query = &self.state.search.to_lowercase();
-                    let line_lower = line.to_lowercase();
+                    // Highlight matching text (Unicode-safe)
+                    let matches = case_insensitive_byte_ranges(line, &self.state.search);
                     let mut spans = Vec::new();
                     let mut last_end = 0;
 
-                    for (start, _) in line_lower.match_indices(query) {
+                    for (start, end) in matches {
                         if start > last_end {
                             spans.push(Span::raw(&line[last_end..start]));
                         }
-                        let end = start + self.state.search.len();
                         let style = if is_current_match {
                             Style::default().fg(Color::Black).bg(Color::Yellow)
                         } else {

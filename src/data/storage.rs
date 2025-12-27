@@ -5,6 +5,7 @@
 //! - `metrics` table: id, timestamp, run_name, step, metrics (JSON)
 //! - `configs` table: id, run_name, config (JSON), created_at
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -44,15 +45,21 @@ fn parse_timestamp(timestamp: Option<String>) -> Option<DateTime<Utc>> {
     })
 }
 
-/// Storage interface for trackio's SQLite database
+/// Storage interface for trackio's SQLite database.
+/// Caches database connections per project for efficiency.
 pub struct Storage {
     db_path: PathBuf,
+    /// Cached connections per project (interior mutability for caching)
+    connections: RefCell<HashMap<String, Connection>>,
 }
 
 impl Storage {
     /// Create a new Storage instance pointing to the trackio database directory
     pub fn new(db_path: PathBuf) -> Self {
-        Storage { db_path }
+        Storage {
+            db_path,
+            connections: RefCell::new(HashMap::new()),
+        }
     }
 
     /// Get the path to a project's database file
@@ -60,7 +67,8 @@ impl Storage {
         self.db_path.join(format!("{project}.db"))
     }
 
-    /// Open a read-only connection to a project database
+    /// Open a read-only connection to a project database (for one-off queries).
+    /// For frequently accessed projects, connections are cached automatically.
     fn open_project_db(&self, project: &str) -> Result<Connection> {
         let path = self.project_db_path(project);
         if !path.exists() {
@@ -68,6 +76,30 @@ impl Storage {
         }
         Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .with_context(|| format!("Failed to open database: {path:?}"))
+    }
+
+    /// Execute a function with a cached connection to a project database.
+    /// The connection is cached for subsequent calls to the same project.
+    fn with_connection<T, F>(&self, project: &str, f: F) -> Result<T>
+    where
+        F: FnOnce(&Connection) -> Result<T>,
+    {
+        let mut connections = self.connections.borrow_mut();
+
+        // Ensure connection exists in cache
+        if !connections.contains_key(project) {
+            let path = self.project_db_path(project);
+            if !path.exists() {
+                anyhow::bail!("Project database not found: {path:?}");
+            }
+            let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .with_context(|| format!("Failed to open database: {path:?}"))?;
+            connections.insert(project.to_string(), conn);
+        }
+
+        // Get reference and execute function
+        let conn = connections.get(project).unwrap();
+        f(conn)
     }
 
     /// List all available projects by scanning for .db files
@@ -130,84 +162,82 @@ impl Storage {
         Ok((run_count, last_updated))
     }
 
-    /// List all runs for a project
+    /// List all runs for a project (uses cached connection)
     pub fn list_runs(&self, project: &str) -> Result<Vec<Run>> {
-        let conn = self.open_project_db(project)?;
-        let mut runs = Vec::new();
+        let project_str = project.to_string();
+        self.with_connection(project, |conn| {
+            let mut runs = Vec::new();
 
-        // Query configs table for run information
-        let mut stmt = conn
-            .prepare("SELECT run_name, config, created_at FROM configs ORDER BY created_at DESC")?;
+            // Query configs table for run information
+            let mut stmt = conn.prepare(
+                "SELECT run_name, config, created_at FROM configs ORDER BY created_at DESC",
+            )?;
 
-        let run_iter = stmt.query_map([], |row| {
-            let run_name: String = row.get(0)?;
-            // Config can be stored as TEXT or BLOB depending on how trackio wrote it
-            let config_json: String = get_string_or_blob(row, 1)?;
-            let created_at: String = row.get(2)?;
-            Ok((run_name, config_json, created_at))
-        })?;
+            let run_iter = stmt.query_map([], |row| {
+                let run_name: String = row.get(0)?;
+                // Config can be stored as TEXT or BLOB depending on how trackio wrote it
+                let config_json: String = get_string_or_blob(row, 1)?;
+                let created_at: String = row.get(2)?;
+                Ok((run_name, config_json, created_at))
+            })?;
 
-        for run_result in run_iter {
-            let (run_name, config_json, created_at) = run_result?;
+            for run_result in run_iter {
+                let (run_name, config_json, created_at) = run_result?;
 
-            let config = parse_config_json(&config_json).unwrap_or_default();
+                let config = parse_config_json(&config_json).unwrap_or_default();
 
-            let created_at = parse_timestamp(Some(created_at));
+                let created_at = parse_timestamp(Some(created_at));
 
-            runs.push(Run::new(
-                run_name.clone(),
-                project.to_string(),
-                Some(run_name),
-                created_at,
-                config,
-            ));
-        }
+                runs.push(Run::new(run_name, project_str.clone(), created_at, config));
+            }
 
-        Ok(runs)
+            Ok(runs)
+        })
     }
 
-    /// Get all metrics for a run (single pass through data)
+    /// Get all metrics for a run (single pass through data, uses cached connection)
     pub fn get_all_metrics(&self, project: &str, run_id: &str) -> Result<Vec<Metric>> {
-        let conn = self.open_project_db(project)?;
+        let run_id_str = run_id.to_string();
+        self.with_connection(project, |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT step, metrics, timestamp FROM metrics WHERE run_name = ? ORDER BY step",
+            )?;
 
-        let mut stmt = conn.prepare(
-            "SELECT step, metrics, timestamp FROM metrics WHERE run_name = ? ORDER BY step",
-        )?;
+            let mut metrics_map: HashMap<String, Metric> = HashMap::new();
 
-        let mut metrics_map: HashMap<String, Metric> = HashMap::new();
+            let row_iter = stmt.query_map([&run_id_str], |row| {
+                let step: i64 = row.get(0)?;
+                let metrics_json: String = get_string_or_blob(row, 1)?;
+                let timestamp: Option<String> = row.get(2)?;
+                Ok((step, metrics_json, timestamp))
+            })?;
 
-        let row_iter = stmt.query_map([run_id], |row| {
-            let step: i64 = row.get(0)?;
-            let metrics_json: String = get_string_or_blob(row, 1)?;
-            let timestamp: Option<String> = row.get(2)?;
-            Ok((step, metrics_json, timestamp))
-        })?;
+            for row in row_iter {
+                let (step, metrics_json, timestamp) = row?;
+                let ts = parse_timestamp(timestamp);
 
-        for row in row_iter {
-            let (step, metrics_json, timestamp) = row?;
-            let ts = parse_timestamp(timestamp);
-
-            if let Ok(map) =
-                serde_json::from_str::<HashMap<String, serde_json::Value>>(&metrics_json)
-            {
-                for (name, value) in map {
-                    if let Some(v) = value.as_f64() {
-                        let metric = metrics_map
-                            .entry(name.clone())
-                            .or_insert_with(|| Metric::new(name));
-                        metric.points.push(MetricPoint {
-                            step,
-                            value: v,
-                            timestamp: ts,
-                        });
+                if let Ok(map) =
+                    serde_json::from_str::<HashMap<String, serde_json::Value>>(&metrics_json)
+                {
+                    for (name, value) in map {
+                        if let Some(v) = value.as_f64() {
+                            let metric = metrics_map
+                                .entry(name.clone())
+                                .or_insert_with(|| Metric::new(name));
+                            metric.points.push(MetricPoint {
+                                step,
+                                value: v,
+                                timestamp: ts,
+                            });
+                        }
                     }
                 }
             }
-        }
 
-        let mut metrics: Vec<Metric> = metrics_map.into_values().collect();
-        metrics.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(metrics)
+            let mut metrics: Vec<Metric> = metrics_map.into_values().collect();
+            metrics.sort_by(|a, b| a.name.cmp(&b.name));
+            Ok(metrics)
+        })
     }
 }
 

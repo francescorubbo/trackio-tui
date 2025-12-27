@@ -11,39 +11,37 @@ pub struct Project {
     pub last_updated: Option<DateTime<Utc>>,
 }
 
+/// Maximum characters to show in display name before truncating
+const DISPLAY_NAME_MAX_LEN: usize = 8;
+
 /// An individual experiment run within a project
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Run {
     pub id: String,
     pub project: String,
-    pub name: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub config: Vec<Config>,
-    /// Cached display name (computed on construction)
+    /// Cached display name (computed on construction, derived from id)
     pub display_name: String,
 }
 
 impl Run {
-    /// Create a new Run with cached display_name
+    /// Create a new Run with cached display_name derived from id
     pub fn new(
         id: String,
         project: String,
-        name: Option<String>,
         created_at: Option<DateTime<Utc>>,
         config: Vec<Config>,
     ) -> Self {
-        let display_name = name.clone().unwrap_or_else(|| {
-            // Use first 8 chars of ID if no name
-            if id.len() > 8 {
-                format!("{}...", &id[..8])
-            } else {
-                id.clone()
-            }
-        });
+        // Truncate long IDs for display
+        let display_name = if id.len() > DISPLAY_NAME_MAX_LEN {
+            format!("{}...", &id[..DISPLAY_NAME_MAX_LEN])
+        } else {
+            id.clone()
+        };
         Run {
             id,
             project,
-            name,
             created_at,
             config,
             display_name,
