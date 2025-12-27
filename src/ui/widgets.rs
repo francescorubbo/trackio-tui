@@ -144,7 +144,7 @@ impl<'a> ConfigPanel<'a> {
                     .state
                     .match_indices
                     .get(self.state.current_match)
-                    .map_or(false, |&m| m == idx);
+                    .is_some_and(|&m| m == idx);
 
                 if !self.state.search.is_empty() && is_match_line {
                     // Highlight matching text
