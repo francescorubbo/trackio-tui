@@ -7,7 +7,7 @@ mod models;
 mod storage;
 
 pub use comparison::ComparisonState;
-pub use models::{Config, Metric, Project, Run};
 #[cfg(test)]
 pub(crate) use models::MetricPoint;
+pub use models::{Config, Metric, Project, Run};
 pub use storage::Storage;

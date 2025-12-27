@@ -49,7 +49,10 @@ fn case_insensitive_byte_ranges(line: &str, query: &str) -> Vec<(usize, usize)> 
             let end = start + s.len();
             // Ensure indices are in bounds
             if end <= lower_to_orig.len() {
-                Some((lower_to_orig[start], lower_to_orig[end.min(lower_to_orig.len() - 1)]))
+                Some((
+                    lower_to_orig[start],
+                    lower_to_orig[end.min(lower_to_orig.len() - 1)],
+                ))
             } else {
                 None
             }

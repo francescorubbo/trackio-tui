@@ -231,8 +231,7 @@ mod tests {
         state.cache_metrics("run-5", vec![make_metric("loss", &[0.8])]);
 
         // Prune: only run-0 and run-3 are valid
-        let valid_ids: HashSet<String> =
-            ["run-0", "run-3"].iter().map(|s| s.to_string()).collect();
+        let valid_ids: HashSet<String> = ["run-0", "run-3"].iter().map(|s| s.to_string()).collect();
         state.prune_invalid_runs(&valid_ids);
 
         assert!(state.is_marked("run-0"));

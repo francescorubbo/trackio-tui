@@ -624,7 +624,11 @@ impl App {
             self.focused == FocusedPanel::Projects,
         );
 
-        let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_run_ids());
+        let run_list = RunList::new(
+            &self.runs,
+            self.selected_run,
+            self.comparison.marked_run_ids(),
+        );
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
 
         let config_panel = ConfigPanel::new(self.current_config(), &self.config_panel);
@@ -666,11 +670,8 @@ impl App {
         for (run_id, metric) in self.comparison.get_comparison_metrics(current_run_id) {
             if metric.name == current_metric_name {
                 // Find the run index for consistent color assignment
-                if let Some((run_idx, run)) = self
-                    .runs
-                    .iter()
-                    .enumerate()
-                    .find(|(_, r)| r.id == run_id)
+                if let Some((run_idx, run)) =
+                    self.runs.iter().enumerate().find(|(_, r)| r.id == run_id)
                 {
                     chart_metrics.push((run.display_name.clone(), run_idx, metric));
                 }

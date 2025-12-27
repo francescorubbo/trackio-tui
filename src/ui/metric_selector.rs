@@ -414,7 +414,7 @@ mod tests {
 
         // Set up: window_start = 7 means slots show metrics [7,8,9,10,11,0,1,2,3]
         // Wait, that's after wrapping. Let me think about this differently.
-        // 
+        //
         // Actually, to have metric 12 (index 11) in slot 5 (0-indexed: slot 4):
         // window_start + 4 = 11, so window_start = 7
         // Window shows: [7,8,9,10,11,12-is-index-11,...] - no wait, indices are 0-11
