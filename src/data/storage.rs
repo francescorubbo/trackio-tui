@@ -34,6 +34,16 @@ fn get_string_or_blob(row: &Row, idx: usize) -> rusqlite::Result<String> {
     }
 }
 
+/// Parse a timestamp string into a DateTime<Utc>
+fn parse_timestamp(timestamp: Option<String>) -> Option<DateTime<Utc>> {
+    timestamp.and_then(|t| {
+        DateTime::parse_from_rfc3339(&t)
+            .or_else(|_| DateTime::parse_from_str(&t, "%Y-%m-%dT%H:%M:%S%.f"))
+            .map(|dt| dt.with_timezone(&Utc))
+            .ok()
+    })
+}
+
 /// Storage interface for trackio's SQLite database
 pub struct Storage {
     db_path: PathBuf,
@@ -115,12 +125,7 @@ impl Storage {
             .query_row("SELECT MAX(created_at) FROM configs", [], |row| row.get(0))
             .ok();
 
-        let last_updated = last_updated.and_then(|ts| {
-            DateTime::parse_from_rfc3339(&ts)
-                .or_else(|_| DateTime::parse_from_str(&ts, "%Y-%m-%dT%H:%M:%S%.f"))
-                .map(|dt| dt.with_timezone(&Utc))
-                .ok()
-        });
+        let last_updated = parse_timestamp(last_updated);
 
         Ok((run_count, last_updated))
     }
@@ -147,54 +152,29 @@ impl Storage {
 
             let config = parse_config_json(&config_json).unwrap_or_default();
 
-            let created_at = DateTime::parse_from_rfc3339(&created_at)
-                .or_else(|_| DateTime::parse_from_str(&created_at, "%Y-%m-%dT%H:%M:%S%.f"))
-                .map(|dt| dt.with_timezone(&Utc))
-                .ok();
+            let created_at = parse_timestamp(Some(created_at));
 
-            runs.push(Run {
-                id: run_name.clone(),
-                project: project.to_string(),
-                name: Some(run_name),
+            runs.push(Run::new(
+                run_name.clone(),
+                project.to_string(),
+                Some(run_name),
                 created_at,
                 config,
-            });
+            ));
         }
 
         Ok(runs)
     }
 
-    /// Get all metric names for a run
-    pub fn list_metrics(&self, project: &str, run_id: &str) -> Result<Vec<String>> {
-        let conn = self.open_project_db(project)?;
-
-        // Get a sample metrics JSON to extract available metric names
-        let metrics_json: Option<String> = conn
-            .query_row(
-                "SELECT metrics FROM metrics WHERE run_name = ? LIMIT 1",
-                [run_id],
-                |row| get_string_or_blob(row, 0),
-            )
-            .ok();
-
-        if let Some(json) = metrics_json {
-            if let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&json) {
-                let mut names: Vec<String> = map.keys().cloned().collect();
-                names.sort();
-                return Ok(names);
-            }
-        }
-
-        Ok(Vec::new())
-    }
-
-    /// Get metric data for a specific run and metric name
-    pub fn get_metric(&self, project: &str, run_id: &str, metric_name: &str) -> Result<Metric> {
+    /// Get all metrics for a run (single pass through data)
+    pub fn get_all_metrics(&self, project: &str, run_id: &str) -> Result<Vec<Metric>> {
         let conn = self.open_project_db(project)?;
 
         let mut stmt = conn.prepare(
             "SELECT step, metrics, timestamp FROM metrics WHERE run_name = ? ORDER BY step",
         )?;
+
+        let mut metrics_map: HashMap<String, Metric> = HashMap::new();
 
         let row_iter = stmt.query_map([run_id], |row| {
             let step: i64 = row.get(0)?;
@@ -203,24 +183,18 @@ impl Storage {
             Ok((step, metrics_json, timestamp))
         })?;
 
-        let mut metric = Metric::new(metric_name.to_string());
-
         for row in row_iter {
             let (step, metrics_json, timestamp) = row?;
+            let ts = parse_timestamp(timestamp);
 
-            // Parse the JSON and extract the specific metric
             if let Ok(map) =
                 serde_json::from_str::<HashMap<String, serde_json::Value>>(&metrics_json)
             {
-                if let Some(value) = map.get(metric_name) {
+                for (name, value) in map {
                     if let Some(v) = value.as_f64() {
-                        let ts = timestamp.and_then(|t| {
-                            DateTime::parse_from_rfc3339(&t)
-                                .or_else(|_| DateTime::parse_from_str(&t, "%Y-%m-%dT%H:%M:%S%.f"))
-                                .map(|dt| dt.with_timezone(&Utc))
-                                .ok()
-                        });
-
+                        let metric = metrics_map
+                            .entry(name.clone())
+                            .or_insert_with(|| Metric::new(name));
                         metric.points.push(MetricPoint {
                             step,
                             value: v,
@@ -231,21 +205,8 @@ impl Storage {
             }
         }
 
-        Ok(metric)
-    }
-
-    /// Get all metrics for a run
-    pub fn get_all_metrics(&self, project: &str, run_id: &str) -> Result<Vec<Metric>> {
-        let metric_names = self.list_metrics(project, run_id)?;
-        let mut metrics = Vec::new();
-
-        for name in metric_names {
-            let metric = self.get_metric(project, run_id, &name)?;
-            if !metric.points.is_empty() {
-                metrics.push(metric);
-            }
-        }
-
+        let mut metrics: Vec<Metric> = metrics_map.into_values().collect();
+        metrics.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(metrics)
     }
 }

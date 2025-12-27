@@ -156,34 +156,6 @@ Press `h`, `?`, or `F1` at any time to show the help overlay with all keyboard s
 
 Press `q` to quit the application.
 
-## Keyboard Shortcuts
-
-### Navigation
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `Esc` | Go back / switch to Projects panel |
-| `Tab` | Cycle panels (Projects ↔ Runs) |
-| `Shift+Tab` | Cycle panels backwards |
-
-### Run Comparison
-
-| Key | Action |
-|-----|--------|
-| `s` | Toggle run for comparison |
-| `S` | Clear all comparison selections |
-
-### Other
-
-| Key | Action |
-|-----|--------|
-| `1-9` | Quick-select metric by number |
-| `r` | Refresh data |
-| `h` / `?` / `F1` | Toggle help overlay |
-| `q` | Quit |
-
 ## UI Layout
 
 ```
@@ -193,14 +165,14 @@ Press `q` to quit the application.
 │                   │                                                          │
 │ Projects          │  Metrics: train_loss                                     │
 │ ───────────────   │  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                │
-│ ▶ my-project      │  1.0 │⣿                                                  │
-│   other-project   │      │ ⣿                                                 │
-│                   │      │  ⣿⣿                                               │
-│ Runs (3)          │      │    ⣿⣿                                             │
-│ ───────────────   │  0.5 │      ⣿⣿⣿                                          │
-│ ▶ run-001 [done]  │      │         ⣿⣿⣿⣿                                      │
-│   run-002 [done]  │      │              ⣿⣿⣿⣿⣿⣿                               │
-│ ● run-003 [live]  │  0.0 └──────────────────────────────────────────▶ step   │
+│ ▶ my-project      │  1.0 │-                                                  │
+│   other-project   │      │ -                                                 │
+│                   │      │  --                                               │
+│ Runs (3)          │      │    --                                             │
+│ ───────────────   │  0.5 │      ---                                          │
+│ ▶ run-001         │      │         -----                                     │
+│   run-002         │      │              -------                              │
+│ ● run-003         │  0.0 └──────────────────────────────────────────▶ step   │
 │                   │      0                                        100        │
 │ Config            │                                                          │
 │ ───────────────   │  [1] train_loss  [2] val_loss  [3] accuracy              │
