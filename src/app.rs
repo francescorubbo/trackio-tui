@@ -264,7 +264,8 @@ impl App {
         if self.config_match_indices.is_empty() {
             return;
         }
-        self.config_current_match = (self.config_current_match + 1) % self.config_match_indices.len();
+        self.config_current_match =
+            (self.config_current_match + 1) % self.config_match_indices.len();
         self.scroll_to_current_match();
     }
 
@@ -496,7 +497,10 @@ impl App {
             // Vertical scrolling
             KeyCode::Down | KeyCode::Char('j') => {
                 if config_len > 0 {
-                    self.config_scroll_v = self.config_scroll_v.saturating_add(1).min(config_len.saturating_sub(1));
+                    self.config_scroll_v = self
+                        .config_scroll_v
+                        .saturating_add(1)
+                        .min(config_len.saturating_sub(1));
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => {
@@ -606,7 +610,11 @@ impl App {
             current_match: self.config_current_match,
         };
         let config_panel = ConfigPanel::new(self.current_config(), &config_state);
-        config_panel.render(frame, sidebar_chunks[2], self.focused == FocusedPanel::Config);
+        config_panel.render(
+            frame,
+            sidebar_chunks[2],
+            self.focused == FocusedPanel::Config,
+        );
 
         // Render chart
         let current_metric_name = self
