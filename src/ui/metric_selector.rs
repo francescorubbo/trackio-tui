@@ -90,7 +90,7 @@ impl MetricSlotState {
         }
 
         // Clamp window_start using modulo (any position is valid in circular model)
-        self.window_start = self.window_start % num_metrics;
+        self.window_start %= num_metrics;
 
         // Clamp selected_slot to visible range
         let num_visible = self.num_visible_slots(num_metrics);
