@@ -19,19 +19,35 @@ pub struct Run {
     pub name: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub config: Vec<Config>,
+    /// Cached display name (computed on construction)
+    pub display_name: String,
 }
 
 impl Run {
-    /// Get a display name for the run
-    pub fn display_name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| {
+    /// Create a new Run with cached display_name
+    pub fn new(
+        id: String,
+        project: String,
+        name: Option<String>,
+        created_at: Option<DateTime<Utc>>,
+        config: Vec<Config>,
+    ) -> Self {
+        let display_name = name.clone().unwrap_or_else(|| {
             // Use first 8 chars of ID if no name
-            if self.id.len() > 8 {
-                format!("{}...", &self.id[..8])
+            if id.len() > 8 {
+                format!("{}...", &id[..8])
             } else {
-                self.id.clone()
+                id.clone()
             }
-        })
+        });
+        Run {
+            id,
+            project,
+            name,
+            created_at,
+            config,
+            display_name,
+        }
     }
 }
 

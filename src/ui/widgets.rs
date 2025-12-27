@@ -1,5 +1,7 @@
 //! UI widgets for the trackio dashboard.
 
+use std::collections::HashSet;
+
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
@@ -53,11 +55,11 @@ impl<'a> ProjectList<'a> {
 pub struct RunList<'a> {
     runs: &'a [Run],
     selected: usize,
-    marked: &'a [usize],
+    marked: &'a HashSet<usize>,
 }
 
 impl<'a> RunList<'a> {
-    pub fn new(runs: &'a [Run], selected: usize, marked: &'a [usize]) -> Self {
+    pub fn new(runs: &'a [Run], selected: usize, marked: &'a HashSet<usize>) -> Self {
         RunList {
             runs,
             selected,
@@ -76,7 +78,7 @@ impl<'a> RunList<'a> {
                 } else {
                     "  "
                 };
-                ListItem::new(format!("{}{}", prefix, r.display_name()))
+                ListItem::new(format!("{}{}", prefix, r.display_name))
             })
             .collect();
 

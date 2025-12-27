@@ -154,13 +154,13 @@ impl Storage {
 
             let created_at = parse_timestamp(Some(created_at));
 
-            runs.push(Run {
-                id: run_name.clone(),
-                project: project.to_string(),
-                name: Some(run_name),
+            runs.push(Run::new(
+                run_name.clone(),
+                project.to_string(),
+                Some(run_name),
                 created_at,
                 config,
-            });
+            ));
         }
 
         Ok(runs)

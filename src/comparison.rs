@@ -2,15 +2,15 @@
 //!
 //! Manages which runs are marked for comparison and caches their metrics data.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::data::Metric;
 
 /// Manages run comparison state and cached metrics
 #[derive(Debug, Default)]
 pub struct ComparisonState {
-    /// Run indices marked for comparison
-    marked_runs: Vec<usize>,
+    /// Run indices marked for comparison (HashSet for O(1) lookup)
+    marked_runs: HashSet<usize>,
     /// Cached metrics for comparison, keyed by run index
     metrics_cache: HashMap<usize, Vec<Metric>>,
 }
@@ -23,12 +23,12 @@ impl ComparisonState {
 
     /// Toggle a run's comparison status. Returns true if run is now marked.
     pub fn toggle_run(&mut self, run_idx: usize) -> bool {
-        if let Some(pos) = self.marked_runs.iter().position(|&r| r == run_idx) {
-            self.marked_runs.remove(pos);
+        if self.marked_runs.contains(&run_idx) {
+            self.marked_runs.remove(&run_idx);
             self.metrics_cache.remove(&run_idx);
             false
         } else {
-            self.marked_runs.push(run_idx);
+            self.marked_runs.insert(run_idx);
             true
         }
     }
@@ -39,8 +39,8 @@ impl ComparisonState {
         self.marked_runs.contains(&run_idx)
     }
 
-    /// Get the list of marked run indices
-    pub fn marked_runs(&self) -> &[usize] {
+    /// Get the set of marked run indices
+    pub fn marked_runs(&self) -> &HashSet<usize> {
         &self.marked_runs
     }
 
@@ -124,7 +124,8 @@ mod tests {
         let added = state.toggle_run(0);
         assert!(added);
         assert!(state.is_marked(0));
-        assert_eq!(state.marked_runs(), &[0]);
+        assert!(state.marked_runs().contains(&0));
+        assert_eq!(state.marked_runs().len(), 1);
 
         // Toggle off
         let added = state.toggle_run(0);
@@ -147,7 +148,10 @@ mod tests {
         assert!(state.is_marked(3));
         assert!(!state.is_marked(4));
         assert!(state.is_marked(5));
-        assert_eq!(state.marked_runs(), &[1, 3, 5]);
+        assert_eq!(state.marked_runs().len(), 3);
+        assert!(state.marked_runs().contains(&1));
+        assert!(state.marked_runs().contains(&3));
+        assert!(state.marked_runs().contains(&5));
     }
 
     #[test]

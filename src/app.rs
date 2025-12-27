@@ -58,7 +58,6 @@ pub struct App {
     runs: Vec<Run>,
     metrics: Vec<Metric>,
     metric_names: Vec<String>,
-    current_config: Vec<Config>,
 
     // Comparison state
     comparison: ComparisonState,
@@ -92,7 +91,6 @@ impl App {
             runs: Vec::new(),
             metrics: Vec::new(),
             metric_names: Vec::new(),
-            current_config: Vec::new(),
             comparison: ComparisonState::new(),
             focused: FocusedPanel::Projects,
             selected_project: 0,
@@ -136,7 +134,6 @@ impl App {
             self.runs.clear();
             self.metrics.clear();
             self.metric_names.clear();
-            self.current_config.clear();
             self.comparison.clear();
             return Ok(());
         }
@@ -177,14 +174,11 @@ impl App {
         if self.runs.is_empty() {
             self.metrics.clear();
             self.metric_names.clear();
-            self.current_config.clear();
             return Ok(());
         }
 
         let project = &self.projects[self.selected_project];
         let run = &self.runs[self.selected_run];
-
-        self.current_config = run.config.clone();
 
         // Load all metrics data (single pass)
         self.metrics = self.storage.get_all_metrics(&project.name, &run.id)?;
@@ -212,6 +206,14 @@ impl App {
         self.error_message = Some(message);
     }
 
+    /// Get config for the currently selected run
+    fn current_config(&self) -> &[Config] {
+        self.runs
+            .get(self.selected_run)
+            .map(|r| r.config.as_slice())
+            .unwrap_or(&[])
+    }
+
     /// Load/refresh metrics for all comparison runs into the cache
     fn load_comparison_metrics(&mut self) -> Result<()> {
         if self.projects.is_empty() || self.runs.is_empty() {
@@ -220,7 +222,8 @@ impl App {
 
         let project = &self.projects[self.selected_project];
 
-        for &run_idx in self.comparison.marked_runs().to_vec().iter() {
+        let marked: Vec<usize> = self.comparison.marked_runs().iter().copied().collect();
+        for run_idx in marked {
             if run_idx >= self.runs.len() {
                 continue;
             }
@@ -420,7 +423,7 @@ impl App {
         let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_runs());
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
 
-        let config_panel = ConfigPanel::new(&self.current_config);
+        let config_panel = ConfigPanel::new(self.current_config());
         config_panel.render(frame, sidebar_chunks[2]);
 
         // Render chart
@@ -439,7 +442,7 @@ impl App {
             let run_name = self
                 .runs
                 .get(self.selected_run)
-                .map(|r| r.display_name())
+                .map(|r| r.display_name.clone())
                 .unwrap_or_default();
             chart_metrics.push((run_name, self.selected_run, metric));
         }
@@ -448,7 +451,7 @@ impl App {
         for (run_idx, metric) in self.comparison.get_comparison_metrics(self.selected_run) {
             if metric.name == current_metric_name {
                 if let Some(run) = self.runs.get(run_idx) {
-                    chart_metrics.push((run.display_name(), run_idx, metric));
+                    chart_metrics.push((run.display_name.clone(), run_idx, metric));
                 }
             }
         }
