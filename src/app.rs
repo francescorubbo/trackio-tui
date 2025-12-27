@@ -20,7 +20,7 @@ use crate::comparison::ComparisonState;
 use crate::data::{Config, Metric, Project, Run, Storage};
 use crate::ui::{
     chart::{MetricSelector, MetricsChart},
-    widgets::{ConfigPanel, ProjectList, RunList, StatusBar},
+    widgets::{ConfigPanel, ConfigPanelState, ProjectList, RunList, StatusBar},
     HelpOverlay,
 };
 
@@ -29,20 +29,23 @@ use crate::ui::{
 pub enum FocusedPanel {
     Projects,
     Runs,
+    Config,
 }
 
 impl FocusedPanel {
     fn next(self) -> Self {
         match self {
             FocusedPanel::Projects => FocusedPanel::Runs,
-            FocusedPanel::Runs => FocusedPanel::Projects,
+            FocusedPanel::Runs => FocusedPanel::Config,
+            FocusedPanel::Config => FocusedPanel::Projects,
         }
     }
 
     fn prev(self) -> Self {
         match self {
-            FocusedPanel::Projects => FocusedPanel::Runs,
+            FocusedPanel::Projects => FocusedPanel::Config,
             FocusedPanel::Runs => FocusedPanel::Projects,
+            FocusedPanel::Config => FocusedPanel::Runs,
         }
     }
 }
@@ -68,6 +71,14 @@ pub struct App {
     selected_run: usize,
     selected_metric: usize,
     show_help: bool,
+
+    // Config panel state
+    config_scroll_v: u16,
+    config_scroll_h: u16,
+    config_search: String,
+    config_search_active: bool,
+    config_match_indices: Vec<usize>,
+    config_current_match: usize,
 
     // Timing
     last_refresh: Instant,
@@ -97,6 +108,12 @@ impl App {
             selected_run: 0,
             selected_metric: 0,
             show_help: false,
+            config_scroll_v: 0,
+            config_scroll_h: 0,
+            config_search: String::new(),
+            config_search_active: false,
+            config_match_indices: Vec::new(),
+            config_current_match: 0,
             last_refresh: Instant::now(),
             should_quit: false,
             error_message: None,
@@ -214,6 +231,62 @@ impl App {
             .unwrap_or(&[])
     }
 
+    /// Get config lines as strings for display/search
+    fn config_lines(&self) -> Vec<String> {
+        self.current_config()
+            .iter()
+            .map(|c| format!("{}: {}", c.key, c.value))
+            .collect()
+    }
+
+    /// Update search match indices based on current search query
+    fn update_config_search_matches(&mut self) {
+        self.config_match_indices.clear();
+        if self.config_search.is_empty() {
+            return;
+        }
+
+        let query = self.config_search.to_lowercase();
+        for (idx, line) in self.config_lines().iter().enumerate() {
+            if line.to_lowercase().contains(&query) {
+                self.config_match_indices.push(idx);
+            }
+        }
+
+        // Reset current match if out of bounds
+        if self.config_current_match >= self.config_match_indices.len() {
+            self.config_current_match = 0;
+        }
+    }
+
+    /// Jump to the next search match
+    fn next_config_match(&mut self) {
+        if self.config_match_indices.is_empty() {
+            return;
+        }
+        self.config_current_match = (self.config_current_match + 1) % self.config_match_indices.len();
+        self.scroll_to_current_match();
+    }
+
+    /// Jump to the previous search match
+    fn prev_config_match(&mut self) {
+        if self.config_match_indices.is_empty() {
+            return;
+        }
+        self.config_current_match = self
+            .config_current_match
+            .checked_sub(1)
+            .unwrap_or(self.config_match_indices.len() - 1);
+        self.scroll_to_current_match();
+    }
+
+    /// Scroll to make the current match visible
+    fn scroll_to_current_match(&mut self) {
+        if let Some(&line_idx) = self.config_match_indices.get(self.config_current_match) {
+            self.config_scroll_v = line_idx as u16;
+        }
+    }
+
     /// Load/refresh metrics for all comparison runs into the cache
     fn load_comparison_metrics(&mut self) -> Result<()> {
         if self.projects.is_empty() || self.runs.is_empty() {
@@ -255,13 +328,47 @@ impl App {
 
     /// Handle keyboard input
     fn handle_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
+        // Handle search input mode first
+        if self.config_search_active {
+            match key {
+                KeyCode::Esc => {
+                    self.config_search_active = false;
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    self.config_search_active = false;
+                    // Jump to first match if any
+                    if !self.config_match_indices.is_empty() {
+                        self.config_current_match = 0;
+                        self.scroll_to_current_match();
+                    }
+                    return Ok(());
+                }
+                KeyCode::Backspace => {
+                    self.config_search.pop();
+                    self.update_config_search_matches();
+                    return Ok(());
+                }
+                KeyCode::Char(c) => {
+                    self.config_search.push(c);
+                    self.update_config_search_matches();
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
         // Global shortcuts
         match key {
             KeyCode::Char('q') => {
                 self.should_quit = true;
                 return Ok(());
             }
-            KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::F(1) => {
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                self.show_help = !self.show_help;
+                return Ok(());
+            }
+            KeyCode::Char('h') if self.focused != FocusedPanel::Config => {
                 self.show_help = !self.show_help;
                 return Ok(());
             }
@@ -289,12 +396,14 @@ impl App {
             return Ok(());
         }
 
-        // Metric selection with number keys
-        if let KeyCode::Char(c) = key {
-            if let Some(n) = c.to_digit(10) {
-                if n > 0 && (n as usize) <= self.metric_names.len() {
-                    self.selected_metric = (n as usize) - 1;
-                    return Ok(());
+        // Metric selection with number keys (not in config panel)
+        if self.focused != FocusedPanel::Config {
+            if let KeyCode::Char(c) = key {
+                if let Some(n) = c.to_digit(10) {
+                    if n > 0 && (n as usize) <= self.metric_names.len() {
+                        self.selected_metric = (n as usize) - 1;
+                        return Ok(());
+                    }
                 }
             }
         }
@@ -319,6 +428,7 @@ impl App {
         match self.focused {
             FocusedPanel::Projects => self.handle_project_navigation(key)?,
             FocusedPanel::Runs => self.handle_run_navigation(key)?,
+            FocusedPanel::Config => self.handle_config_navigation(key)?,
         }
 
         Ok(())
@@ -329,6 +439,8 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => {
                 if !self.projects.is_empty() {
                     self.selected_project = (self.selected_project + 1) % self.projects.len();
+                    self.config_scroll_v = 0;
+                    self.config_scroll_h = 0;
                     self.load_runs()?;
                 }
             }
@@ -338,6 +450,8 @@ impl App {
                         .selected_project
                         .checked_sub(1)
                         .unwrap_or(self.projects.len() - 1);
+                    self.config_scroll_v = 0;
+                    self.config_scroll_h = 0;
                     self.load_runs()?;
                 }
             }
@@ -351,6 +465,8 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => {
                 if !self.runs.is_empty() {
                     self.selected_run = (self.selected_run + 1) % self.runs.len();
+                    self.config_scroll_v = 0;
+                    self.config_scroll_h = 0;
                     self.load_metrics()?;
                 }
             }
@@ -360,11 +476,69 @@ impl App {
                         .selected_run
                         .checked_sub(1)
                         .unwrap_or(self.runs.len() - 1);
+                    self.config_scroll_v = 0;
+                    self.config_scroll_h = 0;
                     self.load_metrics()?;
                 }
             }
             KeyCode::Esc => {
                 self.focused = FocusedPanel::Projects;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_config_navigation(&mut self, key: KeyCode) -> Result<()> {
+        let config_len = self.current_config().len() as u16;
+
+        match key {
+            // Vertical scrolling
+            KeyCode::Down | KeyCode::Char('j') => {
+                if config_len > 0 {
+                    self.config_scroll_v = self.config_scroll_v.saturating_add(1).min(config_len.saturating_sub(1));
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.config_scroll_v = self.config_scroll_v.saturating_sub(1);
+            }
+            // Horizontal scrolling
+            KeyCode::Right | KeyCode::Char('l') => {
+                self.config_scroll_h = self.config_scroll_h.saturating_add(4);
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                self.config_scroll_h = self.config_scroll_h.saturating_sub(4);
+            }
+            // Search
+            KeyCode::Char('/') => {
+                self.config_search_active = true;
+                self.config_search.clear();
+                self.config_match_indices.clear();
+                self.config_current_match = 0;
+            }
+            // Navigate matches
+            KeyCode::Char('n') => {
+                self.next_config_match();
+            }
+            KeyCode::Char('N') => {
+                self.prev_config_match();
+            }
+            // Clear search
+            KeyCode::Char('c') => {
+                self.config_search.clear();
+                self.config_match_indices.clear();
+                self.config_current_match = 0;
+            }
+            // Exit to previous panel
+            KeyCode::Esc => {
+                if !self.config_search.is_empty() {
+                    // First Esc clears search
+                    self.config_search.clear();
+                    self.config_match_indices.clear();
+                    self.config_current_match = 0;
+                } else {
+                    self.focused = FocusedPanel::Runs;
+                }
             }
             _ => {}
         }
@@ -423,8 +597,16 @@ impl App {
         let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_runs());
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
 
-        let config_panel = ConfigPanel::new(self.current_config());
-        config_panel.render(frame, sidebar_chunks[2]);
+        let config_state = ConfigPanelState {
+            scroll_v: self.config_scroll_v,
+            scroll_h: self.config_scroll_h,
+            search: self.config_search.clone(),
+            search_active: self.config_search_active,
+            match_indices: self.config_match_indices.clone(),
+            current_match: self.config_current_match,
+        };
+        let config_panel = ConfigPanel::new(self.current_config(), &config_state);
+        config_panel.render(frame, sidebar_chunks[2], self.focused == FocusedPanel::Config);
 
         // Render chart
         let current_metric_name = self

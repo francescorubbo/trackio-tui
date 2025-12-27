@@ -26,7 +26,7 @@ impl HelpOverlay {
                 vec![
                     ("j / ↓", "Move down in list"),
                     ("k / ↑", "Move up in list"),
-                    ("Esc", "Go back / move left"),
+                    ("Esc", "Go back / clear search"),
                     ("Tab", "Cycle focus between panels"),
                     ("Shift+Tab", "Cycle focus backwards"),
                 ],
@@ -40,10 +40,22 @@ impl HelpOverlay {
                 ],
             ),
             (
+                "Config Panel",
+                vec![
+                    ("j / ↓", "Scroll down"),
+                    ("k / ↑", "Scroll up"),
+                    ("h / ←", "Scroll left"),
+                    ("l / →", "Scroll right"),
+                    ("/", "Search config"),
+                    ("n / N", "Next/previous match"),
+                    ("c", "Clear search"),
+                ],
+            ),
+            (
                 "General",
                 vec![
                     ("r", "Refresh data"),
-                    ("h / ?", "Toggle this help"),
+                    ("? / F1", "Toggle this help"),
                     ("q", "Quit"),
                 ],
             ),
