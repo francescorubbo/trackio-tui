@@ -146,30 +146,44 @@ fn calculate_bounds(data: &[Vec<(f64, f64)>]) -> ((f64, f64), (f64, f64)) {
     ((x_min, x_max), (y_min, y_max))
 }
 
+use crate::ui::metric_selector::MetricSlotState;
+
 /// Metric selector bar widget
 pub struct MetricSelector<'a> {
     metrics: &'a [String],
-    selected: usize,
+    state: &'a MetricSlotState,
 }
 
 impl<'a> MetricSelector<'a> {
-    pub fn new(metrics: &'a [String], selected: usize) -> Self {
-        MetricSelector { metrics, selected }
+    pub fn new(metrics: &'a [String], state: &'a MetricSlotState) -> Self {
+        MetricSelector { metrics, state }
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let text: String = self
-            .metrics
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                if i == self.selected {
-                    format!("[{}] {}*  ", i + 1, name)
-                } else {
-                    format!("[{}] {}  ", i + 1, name)
-                }
-            })
-            .collect();
+        let num_metrics = self.metrics.len();
+        let range = self.state.visible_range(num_metrics);
+
+        let mut text = String::new();
+
+        // Left indicator: show "<" if there are metrics before the window
+        if self.state.has_more_left() {
+            text.push_str("< ");
+        }
+
+        // Render visible metrics (slots)
+        for (slot, metric_idx) in range.clone().enumerate() {
+            let name = &self.metrics[metric_idx];
+            if slot == self.state.selected_slot {
+                text.push_str(&format!("[{}] {}*  ", slot + 1, name));
+            } else {
+                text.push_str(&format!("[{}] {}  ", slot + 1, name));
+            }
+        }
+
+        // Right indicator: show ">" if there are metrics after the window
+        if self.state.has_more_right(num_metrics) {
+            text.push_str(" >");
+        }
 
         let paragraph = ratatui::widgets::Paragraph::new(text);
         frame.render_widget(paragraph, area);

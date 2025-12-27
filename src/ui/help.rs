@@ -24,14 +24,20 @@ impl HelpOverlay {
             (
                 "Navigation",
                 vec![
-                    ("j / ↓", "Move down in list"),
-                    ("k / ↑", "Move up in list"),
+                    ("↑/↓", "Move up/down in list"),
+                    ("←/→", "Scroll config left/right"),
                     ("Esc", "Go back / clear search"),
                     ("Tab", "Cycle focus between panels"),
                     ("Shift+Tab", "Cycle focus backwards"),
                 ],
             ),
-            ("Metrics", vec![("1-9", "Select metric by number")]),
+            (
+                "Metrics",
+                vec![
+                    ("1-9", "Select metric slot"),
+                    ("[ / ]", "Shift metric window"),
+                ],
+            ),
             (
                 "Comparison",
                 vec![
@@ -40,12 +46,8 @@ impl HelpOverlay {
                 ],
             ),
             (
-                "Config Panel",
+                "Config Search",
                 vec![
-                    ("j / ↓", "Scroll down"),
-                    ("k / ↑", "Scroll up"),
-                    ("h / ←", "Scroll left"),
-                    ("l / →", "Scroll right"),
                     ("/", "Search config"),
                     ("n / N", "Next/previous match"),
                     ("c", "Clear search"),
@@ -54,8 +56,8 @@ impl HelpOverlay {
             (
                 "General",
                 vec![
+                    ("h / ?", "Toggle this help"),
                     ("r", "Refresh data"),
-                    ("? / F1", "Toggle this help"),
                     ("q", "Quit"),
                 ],
             ),

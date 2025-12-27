@@ -20,6 +20,7 @@ use crate::comparison::ComparisonState;
 use crate::data::{Config, Metric, Project, Run, Storage};
 use crate::ui::{
     chart::{MetricSelector, MetricsChart},
+    metric_selector::MetricSlotState,
     widgets::{ConfigPanel, ConfigPanelState, ProjectList, RunList, StatusBar},
     HelpOverlay,
 };
@@ -69,7 +70,7 @@ pub struct App {
     focused: FocusedPanel,
     selected_project: usize,
     selected_run: usize,
-    selected_metric: usize,
+    metric_slot: MetricSlotState,
     show_help: bool,
 
     // Config panel state
@@ -106,7 +107,7 @@ impl App {
             focused: FocusedPanel::Projects,
             selected_project: 0,
             selected_run: 0,
-            selected_metric: 0,
+            metric_slot: MetricSlotState::new(),
             show_help: false,
             config_scroll_v: 0,
             config_scroll_h: 0,
@@ -201,9 +202,8 @@ impl App {
         self.metrics = self.storage.get_all_metrics(&project.name, &run.id)?;
         self.metric_names = self.metrics.iter().map(|m| m.name.clone()).collect();
 
-        if self.selected_metric >= self.metric_names.len() {
-            self.selected_metric = self.metric_names.len().saturating_sub(1);
-        }
+        // Clamp metric slot state to valid range after metrics change
+        self.metric_slot.clamp(self.metric_names.len());
 
         Ok(())
     }
@@ -369,7 +369,7 @@ impl App {
                 self.show_help = !self.show_help;
                 return Ok(());
             }
-            KeyCode::Char('h') if self.focused != FocusedPanel::Config => {
+            KeyCode::Char('h') => {
                 self.show_help = !self.show_help;
                 return Ok(());
             }
@@ -397,16 +397,27 @@ impl App {
             return Ok(());
         }
 
-        // Metric selection with number keys (not in config panel)
-        if self.focused != FocusedPanel::Config {
-            if let KeyCode::Char(c) = key {
-                if let Some(n) = c.to_digit(10) {
-                    if n > 0 && (n as usize) <= self.metric_names.len() {
-                        self.selected_metric = (n as usize) - 1;
-                        return Ok(());
-                    }
+        // Metric slot selection with number keys (1-9 selects slot 0-8)
+        if let KeyCode::Char(c) = key {
+            if let Some(n) = c.to_digit(10) {
+                if n > 0 {
+                    self.metric_slot.select_slot((n as usize) - 1, self.metric_names.len());
+                    return Ok(());
                 }
             }
+        }
+
+        // Shift metric window with [ and ]
+        match key {
+            KeyCode::Char('[') => {
+                self.metric_slot.shift_left(self.metric_names.len());
+                return Ok(());
+            }
+            KeyCode::Char(']') => {
+                self.metric_slot.shift_right(self.metric_names.len());
+                return Ok(());
+            }
+            _ => {}
         }
 
         // Toggle run for comparison
@@ -437,7 +448,7 @@ impl App {
 
     fn handle_project_navigation(&mut self, key: KeyCode) -> Result<()> {
         match key {
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 if !self.projects.is_empty() {
                     self.selected_project = (self.selected_project + 1) % self.projects.len();
                     self.config_scroll_v = 0;
@@ -445,7 +456,7 @@ impl App {
                     self.load_runs()?;
                 }
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 if !self.projects.is_empty() {
                     self.selected_project = self
                         .selected_project
@@ -463,7 +474,7 @@ impl App {
 
     fn handle_run_navigation(&mut self, key: KeyCode) -> Result<()> {
         match key {
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 if !self.runs.is_empty() {
                     self.selected_run = (self.selected_run + 1) % self.runs.len();
                     self.config_scroll_v = 0;
@@ -471,7 +482,7 @@ impl App {
                     self.load_metrics()?;
                 }
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 if !self.runs.is_empty() {
                     self.selected_run = self
                         .selected_run
@@ -495,7 +506,7 @@ impl App {
 
         match key {
             // Vertical scrolling
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 if config_len > 0 {
                     self.config_scroll_v = self
                         .config_scroll_v
@@ -503,14 +514,14 @@ impl App {
                         .min(config_len.saturating_sub(1));
                 }
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 self.config_scroll_v = self.config_scroll_v.saturating_sub(1);
             }
             // Horizontal scrolling
-            KeyCode::Right | KeyCode::Char('l') => {
+            KeyCode::Right => {
                 self.config_scroll_h = self.config_scroll_h.saturating_add(4);
             }
-            KeyCode::Left | KeyCode::Char('h') => {
+            KeyCode::Left => {
                 self.config_scroll_h = self.config_scroll_h.saturating_sub(4);
             }
             // Search
@@ -619,7 +630,7 @@ impl App {
         // Render chart
         let current_metric_name = self
             .metric_names
-            .get(self.selected_metric)
+            .get(self.metric_slot.selected_metric())
             .map(|s| s.as_str())
             .unwrap_or("No metric selected");
 
@@ -653,7 +664,7 @@ impl App {
         chart.render(frame, content_chunks[0]);
 
         // Render metric selector
-        let metric_selector = MetricSelector::new(&self.metric_names, self.selected_metric);
+        let metric_selector = MetricSelector::new(&self.metric_names, &self.metric_slot);
         metric_selector.render(frame, content_chunks[1]);
 
         // Render status bar
@@ -761,3 +772,4 @@ fn run_main_loop(
         }
     }
 }
+
