@@ -184,11 +184,11 @@ impl App {
         let project = &self.projects[self.selected_project];
         let run = &self.runs[self.selected_run];
 
-        self.metric_names = self.storage.list_metrics(&project.name, &run.id)?;
         self.current_config = run.config.clone();
 
-        // Load all metrics data
+        // Load all metrics data (single pass)
         self.metrics = self.storage.get_all_metrics(&project.name, &run.id)?;
+        self.metric_names = self.metrics.iter().map(|m| m.name.clone()).collect();
 
         if self.selected_metric >= self.metric_names.len() {
             self.selected_metric = self.metric_names.len().saturating_sub(1);
