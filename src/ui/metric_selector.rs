@@ -213,11 +213,11 @@ mod tests {
     #[test]
     fn test_fewer_than_9_metrics_no_shift() {
         let mut state = MetricSlotState::new();
-        
+
         // With 5 metrics, shifting should do nothing
         state.shift_right(5);
         assert_eq!(state.window_start, 0);
-        
+
         state.shift_left(5);
         assert_eq!(state.window_start, 0);
     }
@@ -225,10 +225,10 @@ mod tests {
     #[test]
     fn test_exactly_9_metrics_no_shift() {
         let mut state = MetricSlotState::new();
-        
+
         state.shift_right(9);
         assert_eq!(state.window_start, 0);
-        
+
         state.shift_left(9);
         assert_eq!(state.window_start, 0);
     }
@@ -238,10 +238,10 @@ mod tests {
         let mut state = MetricSlotState::new();
         state.window_start = 5;
         state.selected_slot = 7;
-        
+
         // Reduce to 6 metrics
         state.clamp(6);
-        
+
         // window_start should be 0 (can't start at 5 with only 6 metrics)
         assert_eq!(state.window_start, 0);
         // selected_slot should be clamped to 5 (max index for 6 slots)
@@ -253,9 +253,9 @@ mod tests {
         let mut state = MetricSlotState::new();
         state.window_start = 5;
         state.selected_slot = 3;
-        
+
         state.clamp(0);
-        
+
         assert_eq!(state.window_start, 0);
         assert_eq!(state.selected_slot, 0);
     }
@@ -265,10 +265,10 @@ mod tests {
         let mut state = MetricSlotState::new();
         state.window_start = 2;
         state.selected_slot = 3;
-        
+
         // 12 metrics - state is already valid
         state.clamp(12);
-        
+
         assert_eq!(state.window_start, 2);
         assert_eq!(state.selected_slot, 3);
     }
@@ -276,15 +276,15 @@ mod tests {
     #[test]
     fn test_visible_range() {
         let mut state = MetricSlotState::new();
-        
+
         // Full window
         state.window_start = 0;
         assert_eq!(state.visible_range(12), 0..9);
-        
+
         // Shifted window
         state.window_start = 3;
         assert_eq!(state.visible_range(12), 3..12);
-        
+
         // Fewer than 9 metrics
         state.window_start = 0;
         assert_eq!(state.visible_range(5), 0..5);
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn test_num_visible_slots() {
         let state = MetricSlotState::new();
-        
+
         assert_eq!(state.num_visible_slots(12), 9);
         assert_eq!(state.num_visible_slots(5), 5);
         assert_eq!(state.num_visible_slots(0), 0);
@@ -302,10 +302,10 @@ mod tests {
     #[test]
     fn test_has_more_left() {
         let mut state = MetricSlotState::new();
-        
+
         state.window_start = 0;
         assert!(!state.has_more_left());
-        
+
         state.window_start = 1;
         assert!(state.has_more_left());
     }
@@ -313,15 +313,15 @@ mod tests {
     #[test]
     fn test_has_more_right() {
         let mut state = MetricSlotState::new();
-        
+
         // 12 metrics, window at start - there's more to the right
         state.window_start = 0;
         assert!(state.has_more_right(12));
-        
+
         // Window at end
         state.window_start = 3; // 12 - 9 = 3
         assert!(!state.has_more_right(12));
-        
+
         // Fewer than 9 metrics - nothing more
         state.window_start = 0;
         assert!(!state.has_more_right(5));
@@ -330,11 +330,11 @@ mod tests {
     #[test]
     fn test_slot_selection_with_fewer_metrics() {
         let mut state = MetricSlotState::new();
-        
+
         // With 3 metrics, can only select slots 0, 1, 2
         state.select_slot(2, 3);
         assert_eq!(state.selected_slot, 2);
-        
+
         // Slot 3 is out of range
         state.select_slot(3, 3);
         assert_eq!(state.selected_slot, 2); // Unchanged
@@ -344,30 +344,29 @@ mod tests {
     fn test_integration_scenario() {
         // Simulate user interaction: 12 metrics (a-l)
         let mut state = MetricSlotState::new();
-        
+
         // Initial: slot 0 selected, showing metric 0 (a)
         assert_eq!(state.selected_metric(), 0);
-        
+
         // Press "3" - select slot 2
         state.select_slot(2, 12);
         assert_eq!(state.selected_slot, 2);
         assert_eq!(state.selected_metric(), 2); // metric c
-        
+
         // Press "]" - shift window right
         state.shift_right(12);
         assert_eq!(state.window_start, 1);
         assert_eq!(state.selected_slot, 2); // Still slot 2
         assert_eq!(state.selected_metric(), 3); // metric d (1 + 2)
-        
+
         // Press "]" again
         state.shift_right(12);
         assert_eq!(state.window_start, 2);
         assert_eq!(state.selected_metric(), 4); // metric e (2 + 2)
-        
+
         // Press "[" - shift back
         state.shift_left(12);
         assert_eq!(state.window_start, 1);
         assert_eq!(state.selected_metric(), 3); // metric d
     }
 }
-

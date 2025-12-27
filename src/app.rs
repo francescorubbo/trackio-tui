@@ -401,7 +401,8 @@ impl App {
         if let KeyCode::Char(c) = key {
             if let Some(n) = c.to_digit(10) {
                 if n > 0 {
-                    self.metric_slot.select_slot((n as usize) - 1, self.metric_names.len());
+                    self.metric_slot
+                        .select_slot((n as usize) - 1, self.metric_names.len());
                     return Ok(());
                 }
             }
@@ -772,4 +773,3 @@ fn run_main_loop(
         }
     }
 }
-

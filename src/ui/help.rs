@@ -91,7 +91,10 @@ impl HelpOverlay {
 
         for (section, items) in shortcuts {
             // Section header
-            lines.push(Line::from(Span::styled(format!("  {section}"), section_style)));
+            lines.push(Line::from(Span::styled(
+                format!("  {section}"),
+                section_style,
+            )));
             lines.push(Line::from(""));
 
             for (key, desc) in items {
