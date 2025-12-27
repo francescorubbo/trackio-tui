@@ -5,7 +5,6 @@
 
 mod app;
 mod cli;
-mod comparison;
 mod data;
 mod ui;
 

@@ -3,6 +3,12 @@
 use std::io;
 use std::time::{Duration, Instant};
 
+/// Width of the sidebar panel in characters
+const SIDEBAR_WIDTH: u16 = 25;
+
+/// Horizontal scroll step for config panel
+const HORIZONTAL_SCROLL_STEP: u16 = 4;
+
 use anyhow::{Context, Result};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
@@ -16,11 +22,10 @@ use ratatui::{
 };
 
 use crate::cli::AppConfig;
-use crate::comparison::ComparisonState;
-use crate::data::{Config, Metric, Project, Run, Storage};
+use crate::data::{ComparisonState, Config, Metric, Project, Run, Storage};
 use crate::ui::{
-    chart::{MetricSelector, MetricsChart},
-    metric_selector::MetricSlotState,
+    chart::MetricsChart,
+    metric_selector::{MetricSelector, MetricSlotState},
     widgets::{ConfigPanel, ConfigPanelState, ProjectList, RunList, StatusBar},
     HelpOverlay,
 };
@@ -73,13 +78,10 @@ pub struct App {
     metric_slot: MetricSlotState,
     show_help: bool,
 
-    // Config panel state
-    config_scroll_v: u16,
-    config_scroll_h: u16,
-    config_search: String,
-    config_search_active: bool,
-    config_match_indices: Vec<usize>,
-    config_current_match: usize,
+    // Config panel state (consolidated)
+    config_panel: ConfigPanelState,
+    // Cached config lines for search (regenerated when run changes)
+    cached_config_lines: Vec<String>,
 
     // Timing
     last_refresh: Instant,
@@ -109,12 +111,8 @@ impl App {
             selected_run: 0,
             metric_slot: MetricSlotState::new(),
             show_help: false,
-            config_scroll_v: 0,
-            config_scroll_h: 0,
-            config_search: String::new(),
-            config_search_active: false,
-            config_match_indices: Vec::new(),
-            config_current_match: 0,
+            config_panel: ConfigPanelState::new(),
+            cached_config_lines: Vec::new(),
             last_refresh: Instant::now(),
             should_quit: false,
             error_message: None,
@@ -167,8 +165,10 @@ impl App {
             // Clear comparison selection when changing projects
             self.comparison.clear();
         } else {
-            // Prune any invalid run indices after refresh
-            self.comparison.prune_invalid_runs(self.runs.len());
+            // Prune any runs that no longer exist after refresh
+            let valid_ids: std::collections::HashSet<String> =
+                self.runs.iter().map(|r| r.id.clone()).collect();
+            self.comparison.prune_invalid_runs(&valid_ids);
         }
 
         // Load metrics for selected run
@@ -192,6 +192,7 @@ impl App {
         if self.runs.is_empty() {
             self.metrics.clear();
             self.metric_names.clear();
+            self.cached_config_lines.clear();
             return Ok(());
         }
 
@@ -204,6 +205,9 @@ impl App {
 
         // Clamp metric slot state to valid range after metrics change
         self.metric_slot.clamp(self.metric_names.len());
+
+        // Regenerate cached config lines for the new run
+        self.regenerate_config_lines();
 
         Ok(())
     }
@@ -231,60 +235,66 @@ impl App {
             .unwrap_or(&[])
     }
 
-    /// Get config lines as strings for display/search
-    fn config_lines(&self) -> Vec<String> {
-        self.current_config()
+    /// Regenerate cached config lines (call when run changes)
+    fn regenerate_config_lines(&mut self) {
+        self.cached_config_lines = self
+            .current_config()
             .iter()
             .map(|c| format!("{}: {}", c.key, c.value))
-            .collect()
+            .collect();
     }
 
     /// Update search match indices based on current search query
     fn update_config_search_matches(&mut self) {
-        self.config_match_indices.clear();
-        if self.config_search.is_empty() {
+        self.config_panel.match_indices.clear();
+        if self.config_panel.search.is_empty() {
             return;
         }
 
-        let query = self.config_search.to_lowercase();
-        for (idx, line) in self.config_lines().iter().enumerate() {
+        let query = self.config_panel.search.to_lowercase();
+        for (idx, line) in self.cached_config_lines.iter().enumerate() {
             if line.to_lowercase().contains(&query) {
-                self.config_match_indices.push(idx);
+                self.config_panel.match_indices.push(idx);
             }
         }
 
         // Reset current match if out of bounds
-        if self.config_current_match >= self.config_match_indices.len() {
-            self.config_current_match = 0;
+        if self.config_panel.current_match >= self.config_panel.match_indices.len() {
+            self.config_panel.current_match = 0;
         }
     }
 
     /// Jump to the next search match
     fn next_config_match(&mut self) {
-        if self.config_match_indices.is_empty() {
+        if self.config_panel.match_indices.is_empty() {
             return;
         }
-        self.config_current_match =
-            (self.config_current_match + 1) % self.config_match_indices.len();
+        self.config_panel.current_match =
+            (self.config_panel.current_match + 1) % self.config_panel.match_indices.len();
         self.scroll_to_current_match();
     }
 
     /// Jump to the previous search match
     fn prev_config_match(&mut self) {
-        if self.config_match_indices.is_empty() {
+        if self.config_panel.match_indices.is_empty() {
             return;
         }
-        self.config_current_match = self
-            .config_current_match
+        self.config_panel.current_match = self
+            .config_panel
+            .current_match
             .checked_sub(1)
-            .unwrap_or(self.config_match_indices.len() - 1);
+            .unwrap_or(self.config_panel.match_indices.len() - 1);
         self.scroll_to_current_match();
     }
 
     /// Scroll to make the current match visible
     fn scroll_to_current_match(&mut self) {
-        if let Some(&line_idx) = self.config_match_indices.get(self.config_current_match) {
-            self.config_scroll_v = line_idx as u16;
+        if let Some(&line_idx) = self
+            .config_panel
+            .match_indices
+            .get(self.config_panel.current_match)
+        {
+            self.config_panel.scroll_v = line_idx as u16;
         }
     }
 
@@ -296,15 +306,12 @@ impl App {
 
         let project = &self.projects[self.selected_project];
 
-        let marked: Vec<usize> = self.comparison.marked_runs().iter().copied().collect();
-        for run_idx in marked {
-            if run_idx >= self.runs.len() {
-                continue;
-            }
-
-            let run = &self.runs[run_idx];
-            if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
-                self.comparison.cache_metrics(run_idx, metrics);
+        let marked_ids: Vec<String> = self.comparison.marked_run_ids().iter().cloned().collect();
+        for run_id in marked_ids {
+            if let Some(run) = self.runs.iter().find(|r| r.id == run_id) {
+                if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
+                    self.comparison.cache_metrics(&run_id, metrics);
+                }
             }
         }
 
@@ -312,16 +319,17 @@ impl App {
     }
 
     /// Load metrics for a single comparison run into the cache
-    fn load_single_comparison_run(&mut self, run_idx: usize) -> Result<()> {
-        if self.projects.is_empty() || run_idx >= self.runs.len() {
+    fn load_single_comparison_run(&mut self, run_id: &str) -> Result<()> {
+        if self.projects.is_empty() {
             return Ok(());
         }
 
         let project = &self.projects[self.selected_project];
-        let run = &self.runs[run_idx];
 
-        if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
-            self.comparison.cache_metrics(run_idx, metrics);
+        if let Some(run) = self.runs.iter().find(|r| r.id == run_id) {
+            if let Ok(metrics) = self.storage.get_all_metrics(&project.name, &run.id) {
+                self.comparison.cache_metrics(run_id, metrics);
+            }
         }
 
         Ok(())
@@ -330,28 +338,28 @@ impl App {
     /// Handle keyboard input
     fn handle_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) -> Result<()> {
         // Handle search input mode first
-        if self.config_search_active {
+        if self.config_panel.search_active {
             match key {
                 KeyCode::Esc => {
-                    self.config_search_active = false;
+                    self.config_panel.search_active = false;
                     return Ok(());
                 }
                 KeyCode::Enter => {
-                    self.config_search_active = false;
+                    self.config_panel.search_active = false;
                     // Jump to first match if any
-                    if !self.config_match_indices.is_empty() {
-                        self.config_current_match = 0;
+                    if !self.config_panel.match_indices.is_empty() {
+                        self.config_panel.current_match = 0;
                         self.scroll_to_current_match();
                     }
                     return Ok(());
                 }
                 KeyCode::Backspace => {
-                    self.config_search.pop();
+                    self.config_panel.search.pop();
                     self.update_config_search_matches();
                     return Ok(());
                 }
                 KeyCode::Char(c) => {
-                    self.config_search.push(c);
+                    self.config_panel.search.push(c);
                     self.update_config_search_matches();
                     return Ok(());
                 }
@@ -429,10 +437,13 @@ impl App {
         }
         if key == KeyCode::Char('s') && self.focused == FocusedPanel::Runs {
             // s: Toggle current run in comparison
-            let was_added = self.comparison.toggle_run(self.selected_run);
-            if was_added {
-                // Load metrics for the newly added run
-                self.load_single_comparison_run(self.selected_run)?;
+            if let Some(run) = self.runs.get(self.selected_run) {
+                let run_id = run.id.clone();
+                let was_added = self.comparison.toggle_run(&run_id);
+                if was_added {
+                    // Load metrics for the newly added run
+                    self.load_single_comparison_run(&run_id)?;
+                }
             }
             return Ok(());
         }
@@ -452,8 +463,7 @@ impl App {
             KeyCode::Down => {
                 if !self.projects.is_empty() {
                     self.selected_project = (self.selected_project + 1) % self.projects.len();
-                    self.config_scroll_v = 0;
-                    self.config_scroll_h = 0;
+                    self.config_panel.reset();
                     self.load_runs()?;
                 }
             }
@@ -463,8 +473,7 @@ impl App {
                         .selected_project
                         .checked_sub(1)
                         .unwrap_or(self.projects.len() - 1);
-                    self.config_scroll_v = 0;
-                    self.config_scroll_h = 0;
+                    self.config_panel.reset();
                     self.load_runs()?;
                 }
             }
@@ -478,8 +487,7 @@ impl App {
             KeyCode::Down => {
                 if !self.runs.is_empty() {
                     self.selected_run = (self.selected_run + 1) % self.runs.len();
-                    self.config_scroll_v = 0;
-                    self.config_scroll_h = 0;
+                    self.config_panel.reset();
                     self.load_metrics()?;
                 }
             }
@@ -489,8 +497,7 @@ impl App {
                         .selected_run
                         .checked_sub(1)
                         .unwrap_or(self.runs.len() - 1);
-                    self.config_scroll_v = 0;
-                    self.config_scroll_h = 0;
+                    self.config_panel.reset();
                     self.load_metrics()?;
                 }
             }
@@ -509,28 +516,35 @@ impl App {
             // Vertical scrolling
             KeyCode::Down => {
                 if config_len > 0 {
-                    self.config_scroll_v = self
-                        .config_scroll_v
+                    self.config_panel.scroll_v = self
+                        .config_panel
+                        .scroll_v
                         .saturating_add(1)
                         .min(config_len.saturating_sub(1));
                 }
             }
             KeyCode::Up => {
-                self.config_scroll_v = self.config_scroll_v.saturating_sub(1);
+                self.config_panel.scroll_v = self.config_panel.scroll_v.saturating_sub(1);
             }
             // Horizontal scrolling
             KeyCode::Right => {
-                self.config_scroll_h = self.config_scroll_h.saturating_add(4);
+                self.config_panel.scroll_h = self
+                    .config_panel
+                    .scroll_h
+                    .saturating_add(HORIZONTAL_SCROLL_STEP);
             }
             KeyCode::Left => {
-                self.config_scroll_h = self.config_scroll_h.saturating_sub(4);
+                self.config_panel.scroll_h = self
+                    .config_panel
+                    .scroll_h
+                    .saturating_sub(HORIZONTAL_SCROLL_STEP);
             }
             // Search
             KeyCode::Char('/') => {
-                self.config_search_active = true;
-                self.config_search.clear();
-                self.config_match_indices.clear();
-                self.config_current_match = 0;
+                self.config_panel.search_active = true;
+                self.config_panel.search.clear();
+                self.config_panel.match_indices.clear();
+                self.config_panel.current_match = 0;
             }
             // Navigate matches
             KeyCode::Char('n') => {
@@ -541,17 +555,17 @@ impl App {
             }
             // Clear search
             KeyCode::Char('c') => {
-                self.config_search.clear();
-                self.config_match_indices.clear();
-                self.config_current_match = 0;
+                self.config_panel.search.clear();
+                self.config_panel.match_indices.clear();
+                self.config_panel.current_match = 0;
             }
             // Exit to previous panel
             KeyCode::Esc => {
-                if !self.config_search.is_empty() {
+                if !self.config_panel.search.is_empty() {
                     // First Esc clears search
-                    self.config_search.clear();
-                    self.config_match_indices.clear();
-                    self.config_current_match = 0;
+                    self.config_panel.search.clear();
+                    self.config_panel.match_indices.clear();
+                    self.config_panel.current_match = 0;
                 } else {
                     self.focused = FocusedPanel::Runs;
                 }
@@ -578,8 +592,8 @@ impl App {
         let body_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(25), // Sidebar
-                Constraint::Min(40),    // Content
+                Constraint::Length(SIDEBAR_WIDTH), // Sidebar
+                Constraint::Min(40),               // Content
             ])
             .split(main_chunks[0]);
 
@@ -610,18 +624,10 @@ impl App {
             self.focused == FocusedPanel::Projects,
         );
 
-        let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_runs());
+        let run_list = RunList::new(&self.runs, self.selected_run, self.comparison.marked_run_ids());
         run_list.render(frame, sidebar_chunks[1], self.focused == FocusedPanel::Runs);
 
-        let config_state = ConfigPanelState {
-            scroll_v: self.config_scroll_v,
-            scroll_h: self.config_scroll_h,
-            search: self.config_search.clone(),
-            search_active: self.config_search_active,
-            match_indices: self.config_match_indices.clone(),
-            current_match: self.config_current_match,
-        };
-        let config_panel = ConfigPanel::new(self.current_config(), &config_state);
+        let config_panel = ConfigPanel::new(self.current_config(), &self.config_panel);
         config_panel.render(
             frame,
             sidebar_chunks[2],
@@ -631,13 +637,20 @@ impl App {
         // Render chart
         let current_metric_name = self
             .metric_names
-            .get(self.metric_slot.selected_metric())
+            .get(self.metric_slot.selected_metric(self.metric_names.len()))
             .map(|s| s.as_str())
             .unwrap_or("No metric selected");
 
         // Gather metrics for display (including comparison runs)
-        // Tuple: (run_name, run_idx, metric)
+        // Tuple: (run_name, run_idx, metric) - run_idx used for consistent color assignment
         let mut chart_metrics: Vec<(String, usize, &Metric)> = Vec::new();
+
+        // Get current run's ID for comparison exclusion
+        let current_run_id = self
+            .runs
+            .get(self.selected_run)
+            .map(|r| r.id.as_str())
+            .unwrap_or("");
 
         // Add current run's metric
         if let Some(metric) = self.metrics.iter().find(|m| m.name == current_metric_name) {
@@ -650,9 +663,15 @@ impl App {
         }
 
         // Add comparison runs' metrics (excludes currently selected run)
-        for (run_idx, metric) in self.comparison.get_comparison_metrics(self.selected_run) {
+        for (run_id, metric) in self.comparison.get_comparison_metrics(current_run_id) {
             if metric.name == current_metric_name {
-                if let Some(run) = self.runs.get(run_idx) {
+                // Find the run index for consistent color assignment
+                if let Some((run_idx, run)) = self
+                    .runs
+                    .iter()
+                    .enumerate()
+                    .find(|(_, r)| r.id == run_id)
+                {
                     chart_metrics.push((run.display_name.clone(), run_idx, metric));
                 }
             }
@@ -684,11 +703,28 @@ impl App {
     }
 }
 
-/// Restore terminal to normal state
-fn restore_terminal() {
-    // Best effort cleanup - ignore errors since we may be in a panic
-    let _ = disable_raw_mode();
-    let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+/// RAII guard for terminal cleanup.
+/// Ensures terminal is restored to normal state even on panic.
+struct TerminalGuard {
+    _private: (), // Prevent construction outside this module
+}
+
+impl TerminalGuard {
+    /// Setup terminal and return a guard that will restore it on drop.
+    fn setup() -> Result<Self> {
+        enable_raw_mode().context("Failed to enable raw mode")?;
+        execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)
+            .context("Failed to setup terminal")?;
+        Ok(TerminalGuard { _private: () })
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        // Best effort cleanup - ignore errors since we may be in a panic
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+    }
 }
 
 /// Run the TUI application
@@ -703,37 +739,18 @@ pub fn run(config: AppConfig) -> Result<()> {
         return Ok(());
     }
 
-    // Setup terminal
-    enable_raw_mode().context("Failed to enable raw mode")?;
-    let mut stdout = io::stdout();
-    if let Err(e) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
-        restore_terminal();
-        return Err(e).context("Failed to setup terminal");
-    }
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = match Terminal::new(backend) {
-        Ok(t) => t,
-        Err(e) => {
-            restore_terminal();
-            return Err(e).context("Failed to create terminal");
-        }
-    };
+    // Setup terminal with RAII guard - cleanup happens automatically on drop
+    let _guard = TerminalGuard::setup()?;
 
-    // Create app - if this fails, restore terminal first
-    let mut app = match App::new(config) {
-        Ok(a) => a,
-        Err(e) => {
-            restore_terminal();
-            return Err(e).context("Failed to initialize application");
-        }
-    };
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend).context("Failed to create terminal")?;
+
+    let mut app = App::new(config).context("Failed to initialize application")?;
     let tick_rate = Duration::from_secs(app.config.refresh_interval_secs);
 
-    // Main loop - wrap in a closure to ensure cleanup
+    // Main loop - guard ensures cleanup even on panic
     let result = run_main_loop(&mut terminal, &mut app, tick_rate);
 
-    // Always restore terminal, regardless of result
-    restore_terminal();
     terminal.show_cursor().ok();
 
     result

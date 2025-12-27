@@ -119,8 +119,15 @@ impl<'a> MetricsChart<'a> {
     }
 }
 
-/// Calculate X and Y bounds from chart data
+/// Calculate X and Y bounds from chart data.
+/// Returns default bounds (0,1) for each axis if data is empty.
 fn calculate_bounds(data: &[Vec<(f64, f64)>]) -> ((f64, f64), (f64, f64)) {
+    // Check if there's any data at all
+    let has_data = data.iter().any(|points| !points.is_empty());
+    if !has_data {
+        return ((0.0, 1.0), (0.0, 1.0));
+    }
+
     let mut x_min = f64::MAX;
     let mut x_max = f64::MIN;
     let mut y_min = f64::MAX;
@@ -135,7 +142,7 @@ fn calculate_bounds(data: &[Vec<(f64, f64)>]) -> ((f64, f64), (f64, f64)) {
         }
     }
 
-    // Ensure valid bounds
+    // Ensure valid bounds (for single-point case)
     if x_min >= x_max {
         x_max = x_min + 1.0;
     }
@@ -144,50 +151,6 @@ fn calculate_bounds(data: &[Vec<(f64, f64)>]) -> ((f64, f64), (f64, f64)) {
     }
 
     ((x_min, x_max), (y_min, y_max))
-}
-
-use crate::ui::metric_selector::MetricSlotState;
-
-/// Metric selector bar widget
-pub struct MetricSelector<'a> {
-    metrics: &'a [String],
-    state: &'a MetricSlotState,
-}
-
-impl<'a> MetricSelector<'a> {
-    pub fn new(metrics: &'a [String], state: &'a MetricSlotState) -> Self {
-        MetricSelector { metrics, state }
-    }
-
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let num_metrics = self.metrics.len();
-        let range = self.state.visible_range(num_metrics);
-
-        let mut text = String::new();
-
-        // Left indicator: show "<" if there are metrics before the window
-        if self.state.has_more_left() {
-            text.push_str("< ");
-        }
-
-        // Render visible metrics (slots)
-        for (slot, metric_idx) in range.clone().enumerate() {
-            let name = &self.metrics[metric_idx];
-            if slot == self.state.selected_slot {
-                text.push_str(&format!("[{}] {}*  ", slot + 1, name));
-            } else {
-                text.push_str(&format!("[{}] {}  ", slot + 1, name));
-            }
-        }
-
-        // Right indicator: show ">" if there are metrics after the window
-        if self.state.has_more_right(num_metrics) {
-            text.push_str(" >");
-        }
-
-        let paragraph = ratatui::widgets::Paragraph::new(text);
-        frame.render_widget(paragraph, area);
-    }
 }
 
 #[cfg(test)]
@@ -237,5 +200,20 @@ mod tests {
         // Should expand to valid range
         assert_eq!(x_bounds, (5.0, 6.0));
         assert_eq!(y_bounds, (5.0, 6.0));
+    }
+
+    #[test]
+    fn test_calculate_bounds_empty_data() {
+        // Completely empty
+        let data: Vec<Vec<(f64, f64)>> = vec![];
+        let (x_bounds, y_bounds) = calculate_bounds(&data);
+        assert_eq!(x_bounds, (0.0, 1.0));
+        assert_eq!(y_bounds, (0.0, 1.0));
+
+        // Empty inner vectors
+        let data = vec![vec![], vec![]];
+        let (x_bounds, y_bounds) = calculate_bounds(&data);
+        assert_eq!(x_bounds, (0.0, 1.0));
+        assert_eq!(y_bounds, (0.0, 1.0));
     }
 }

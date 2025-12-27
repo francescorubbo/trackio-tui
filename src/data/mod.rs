@@ -1,11 +1,13 @@
 //! Data layer for accessing trackio's SQLite database.
 //!
-//! Handles loading projects, runs, metrics, and config from the local database.
+//! Handles loading projects, runs, metrics, config, and comparison state.
 
+mod comparison;
 mod models;
 mod storage;
 
-#[cfg(test)]
-pub use models::MetricPoint;
+pub use comparison::ComparisonState;
 pub use models::{Config, Metric, Project, Run};
+#[cfg(test)]
+pub(crate) use models::MetricPoint;
 pub use storage::Storage;
