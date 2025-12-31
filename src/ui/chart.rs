@@ -168,7 +168,7 @@ impl<'a> MetricsChart<'a> {
                     _ => "·",
                 };
                 spans.push(Span::styled(
-                    format!("{} ", marker_char),
+                    format!("{marker_char} "),
                     Style::default().add_modifier(Modifier::DIM),
                 ));
                 spans.push(Span::raw(name.clone()));
@@ -188,7 +188,7 @@ impl<'a> MetricsChart<'a> {
                 }
                 let color = COLORS[*run_idx % COLORS.len()];
                 spans.push(Span::styled(
-                    format!("■ {}", name),
+                    format!("■ {name}"),
                     Style::default().fg(color),
                 ));
             }
