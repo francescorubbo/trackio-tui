@@ -177,7 +177,7 @@ Press `q` to quit the application.
 │ ● run-003         │  0.0 └──────────────────────────────────────────▶ step   │
 │                   │      0                                        100        │
 │ Config            │                                                          │
-│ ───────────────   │  [1] train_loss  [2] val_loss  [3] accuracy              │
+│ ───────────────   │  [1] train_loss*  [2] val_loss  [3] accuracy             │
 │ epochs: 10        │                                                          │
 │ lr: 0.001         │                                                          │
 │ batch: 64         │                                                          │
@@ -224,5 +224,5 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 - [trackio](https://github.com/gradio-app/trackio) - The experiment tracking library
 - [ratatui](https://github.com/ratatui/ratatui) - The Rust TUI framework
-- [trackio-view](https://github.com/mcgrof/trackio-view) - Inspiration for terminal visualization
+- [trackio-view](https://github.com/mcgrof/trackio-view) - Python-based terminal visualization for trackio
 
