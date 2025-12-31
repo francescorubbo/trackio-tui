@@ -23,8 +23,8 @@ const COLORS: [Color; 6] = [
 
 /// Markers for differentiating metrics
 const MARKERS: [Marker; 4] = [
-    Marker::Braille, 
-    Marker::Dot, 
+    Marker::Braille,
+    Marker::Dot,
     Marker::Block,
     Marker::Quadrant,
 ];
@@ -93,7 +93,7 @@ impl<'a> MetricsChart<'a> {
                 let color = COLORS[*run_idx % COLORS.len()];
                 let marker = MARKERS[*metric_idx % MARKERS.len()];
                 Dataset::default()
-                    .name("")  // Empty name - we use custom legend
+                    .name("") // Empty name - we use custom legend
                     .marker(marker)
                     .graph_type(GraphType::Line)
                     .style(Style::default().fg(color))
@@ -142,7 +142,7 @@ impl<'a> MetricsChart<'a> {
                         format!("{:.2}", y_bounds.1),
                     ]),
             )
-            .legend_position(None);  // Disabled - using custom factorized legend
+            .legend_position(None); // Disabled - using custom factorized legend
 
         frame.render_widget(chart, chart_area);
     }
