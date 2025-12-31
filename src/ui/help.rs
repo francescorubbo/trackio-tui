@@ -37,7 +37,9 @@ impl HelpOverlay {
                 "Metrics",
                 vec![
                     ("1-9", "Select metric slot"),
-                    ("[ / ]", "Shift metric window"),
+                    ("Space", "Toggle metric for overlay"),
+                    ("Backspace", "Clear metric overlay"),
+                    ("←/→", "Shift metric window"),
                 ],
             ),
             (

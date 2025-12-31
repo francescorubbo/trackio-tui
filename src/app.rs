@@ -416,17 +416,34 @@ impl App {
             }
         }
 
-        // Shift metric window with [ and ]
-        match key {
-            KeyCode::Char('[') => {
-                self.metric_slot.shift_left(self.metric_names.len());
-                return Ok(());
+        // Shift metric window with arrow keys (except when Config panel is focused)
+        if self.focused != FocusedPanel::Config {
+            match key {
+                KeyCode::Left => {
+                    self.metric_slot.shift_left(self.metric_names.len());
+                    return Ok(());
+                }
+                KeyCode::Right => {
+                    self.metric_slot.shift_right(self.metric_names.len());
+                    return Ok(());
+                }
+                _ => {}
             }
-            KeyCode::Char(']') => {
-                self.metric_slot.shift_right(self.metric_names.len());
-                return Ok(());
+        }
+
+        // Toggle metric for overlay with Space
+        if key == KeyCode::Char(' ') {
+            let metric_idx = self.metric_slot.selected_metric(self.metric_names.len());
+            if let Some(name) = self.metric_names.get(metric_idx) {
+                self.metric_slot.toggle_metric(name);
             }
-            _ => {}
+            return Ok(());
+        }
+
+        // Clear metric overlay selection with Backspace
+        if key == KeyCode::Backspace {
+            self.metric_slot.clear_selection();
+            return Ok(());
         }
 
         // Toggle run for comparison
@@ -639,49 +656,101 @@ impl App {
         );
 
         // Render chart
-        let current_metric_name = self
-            .metric_names
-            .get(self.metric_slot.selected_metric(self.metric_names.len()))
-            .map(|s| s.as_str())
-            .unwrap_or("No metric selected");
+        // Always show the focused metric, plus any selected metrics for overlay
+        let selected_names = self.metric_slot.selected_metric_names();
+        let focused_metric_idx = self.metric_slot.selected_metric(self.metric_names.len());
+        let focused_metric_name = self.metric_names.get(focused_metric_idx).cloned();
+        let focused_is_selected = focused_metric_name
+            .as_ref()
+            .map(|n| selected_names.contains(n))
+            .unwrap_or(false);
+
+        // Build list of metric names to show: selected first (sorted), then focused at end if not selected
+        let metrics_to_show_names: Vec<String> = {
+            let mut names: Vec<String> = selected_names.iter().cloned().collect();
+            names.sort();
+            if !focused_is_selected {
+                if let Some(ref name) = focused_metric_name {
+                    names.push(name.clone());
+                }
+            }
+            names
+        };
+
+        // Resolve names to indices for current run (for marker assignment)
+        // Vec of (metric_name, metric_idx_in_current_run or None)
+        let metrics_to_show: Vec<(&str, Option<usize>)> = metrics_to_show_names
+            .iter()
+            .map(|name| {
+                let idx = self.metric_names.iter().position(|n| n == name);
+                (name.as_str(), idx)
+            })
+            .collect();
+
+        // Build chart title
+        let chart_title = if metrics_to_show.len() == 1 {
+            // Single metric
+            metrics_to_show[0].0.to_string()
+        } else if selected_names.is_empty() {
+            // Only focused metric (edge case)
+            focused_metric_name
+                .as_deref()
+                .unwrap_or("No metric selected")
+                .to_string()
+        } else {
+            // Multiple metrics in overlay
+            format!("{} metrics", metrics_to_show.len())
+        };
 
         // Gather metrics for display (including comparison runs)
-        // Tuple: (run_name, run_idx, metric) - run_idx used for consistent color assignment
-        let mut chart_metrics: Vec<(String, usize, &Metric)> = Vec::new();
+        // Tuple: (run_name, run_idx, metric_idx, metric)
+        let mut chart_metrics: Vec<(String, usize, usize, &Metric)> = Vec::new();
 
-        // Get current run's ID for comparison exclusion
+        // Get current run info
         let current_run_id = self
             .runs
             .get(self.selected_run)
             .map(|r| r.id.as_str())
             .unwrap_or("");
+        let current_run_is_compared = self.comparison.marked_run_ids().contains(current_run_id);
 
-        // Add current run's metric
-        if let Some(metric) = self.metrics.iter().find(|m| m.name == current_metric_name) {
-            let run_name = self
-                .runs
-                .get(self.selected_run)
-                .map(|r| r.display_name.clone())
-                .unwrap_or_default();
-            chart_metrics.push((run_name, self.selected_run, metric));
+        // Add current run's metrics for each selected metric
+        let run_name = self
+            .runs
+            .get(self.selected_run)
+            .map(|r| r.display_name.clone())
+            .unwrap_or_default();
+
+        for (i, (metric_name, _)) in metrics_to_show.iter().enumerate() {
+            // Use position in metrics_to_show for marker assignment (i), not the run-specific index
+            if let Some(metric) = self.metrics.iter().find(|m| m.name == *metric_name) {
+                chart_metrics.push((run_name.clone(), self.selected_run, i, metric));
+            }
         }
 
-        // Add comparison runs' metrics (excludes currently selected run)
-        for (run_id, metric) in self.comparison.get_comparison_metrics(current_run_id) {
-            if metric.name == current_metric_name {
-                // Find the run index for consistent color assignment
-                if let Some((run_idx, run)) =
-                    self.runs.iter().enumerate().find(|(_, r)| r.id == run_id)
-                {
-                    chart_metrics.push((run.display_name.clone(), run_idx, metric));
+        // Add comparison runs' metrics for each selected metric
+        for (i, (metric_name, _)) in metrics_to_show.iter().enumerate() {
+            for (run_id, metric) in self.comparison.get_comparison_metrics(current_run_id) {
+                if metric.name == *metric_name {
+                    // Find the run index for consistent color assignment
+                    if let Some((run_idx, run)) =
+                        self.runs.iter().enumerate().find(|(_, r)| r.id == run_id)
+                    {
+                        chart_metrics.push((run.display_name.clone(), run_idx, i, metric));
+                    }
                 }
             }
         }
 
-        // Sort by run index to ensure consistent colors regardless of which run is selected
-        chart_metrics.sort_by_key(|(_, run_idx, _)| *run_idx);
+        // Sort: comparison runs first, then focused run at end if not selected
+        // Metric order is preserved from metrics_to_show (selected first, focused at end)
+        chart_metrics.sort_by_key(|(_, run_idx, metric_idx, _)| {
+            let is_focused_run_unselected =
+                *run_idx == self.selected_run && !current_run_is_compared;
+            (is_focused_run_unselected, *metric_idx, *run_idx)
+        });
 
-        let chart = MetricsChart::new(&chart_metrics, current_metric_name);
+        let chart = MetricsChart::new(&chart_metrics, &chart_title);
         chart.render(frame, content_chunks[0]);
 
         // Render metric selector

@@ -129,8 +129,10 @@ Press `Tab` to switch focus to the Runs panel, then:
 
 The bottom of the chart area shows available metrics numbered `[1]`, `[2]`, etc.
 
-- Press number keys `1`-`9` to quickly switch between metrics
-- The chart title updates to show the currently selected metric
+- Press number keys `1`-`9` to focus a metric slot (indicated by `*`)
+- Press `Space` to toggle the focused metric for overlay (indicated by `•`)
+- Press `Backspace` to clear all overlaid metrics
+- When multiple metrics are overlaid, colors differentiate runs and markers differentiate metrics
 
 ### Step 5: Compare Multiple Runs
 

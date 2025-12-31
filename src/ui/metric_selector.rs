@@ -4,6 +4,8 @@
 //! and the user selects a slot to visualize. The window of metrics can be
 //! shifted while keeping the slot selection fixed.
 
+use std::collections::HashSet;
+
 use ratatui::{layout::Rect, widgets::Paragraph, Frame};
 
 /// Maximum number of slots displayed
@@ -13,13 +15,15 @@ pub const MAX_SLOTS: usize = 9;
 ///
 /// The metric selector shows up to 9 "slots" containing metrics from a sliding window.
 /// The user selects a slot (1-9), and the visualization shows whichever metric
-/// currently occupies that slot.
+/// currently occupies that slot. Multiple metrics can be selected for overlay.
 #[derive(Debug, Clone, Default)]
 pub struct MetricSlotState {
-    /// Which slot (0-8) has the * marker
+    /// Which slot (0-8) has the * marker (focus)
     pub selected_slot: usize,
     /// Which metric index is at slot 0
     pub window_start: usize,
+    /// Names of metrics selected for overlay display
+    pub selected_metrics: HashSet<String>,
 }
 
 impl MetricSlotState {
@@ -86,6 +90,7 @@ impl MetricSlotState {
         if num_metrics == 0 {
             self.selected_slot = 0;
             self.window_start = 0;
+            self.selected_metrics.clear();
             return;
         }
 
@@ -119,6 +124,27 @@ impl MetricSlotState {
     pub fn has_more_right(&self, num_metrics: usize) -> bool {
         num_metrics > MAX_SLOTS
     }
+
+    /// Toggle a metric by name in/out of the overlay selection.
+    ///
+    /// If the metric is already selected, it is removed. Otherwise, it is added.
+    pub fn toggle_metric(&mut self, metric_name: &str) {
+        if self.selected_metrics.contains(metric_name) {
+            self.selected_metrics.remove(metric_name);
+        } else {
+            self.selected_metrics.insert(metric_name.to_string());
+        }
+    }
+
+    /// Clear all selected metrics from the overlay.
+    pub fn clear_selection(&mut self) {
+        self.selected_metrics.clear();
+    }
+
+    /// Get the set of selected metric names for overlay display.
+    pub fn selected_metric_names(&self) -> &HashSet<String> {
+        &self.selected_metrics
+    }
 }
 
 /// Metric selector bar widget for displaying and selecting metrics
@@ -147,11 +173,23 @@ impl<'a> MetricSelector<'a> {
         for slot in 0..num_visible {
             let metric_idx = (self.state.window_start + slot) % num_metrics;
             let name = &self.metrics[metric_idx];
-            if slot == self.state.selected_slot {
-                text.push_str(&format!("[{}] {}*  ", slot + 1, name));
+            let focus_marker = if slot == self.state.selected_slot {
+                "*"
             } else {
-                text.push_str(&format!("[{}] {}  ", slot + 1, name));
-            }
+                ""
+            };
+            let select_marker = if self.state.selected_metrics.contains(name) {
+                "•"
+            } else {
+                ""
+            };
+            text.push_str(&format!(
+                "[{}] {}{}{}  ",
+                slot + 1,
+                name,
+                focus_marker,
+                select_marker
+            ));
         }
 
         // Right indicator: show ">" if there are more metrics than slots (circular)
@@ -412,13 +450,6 @@ mod tests {
         let mut state = MetricSlotState::new();
         let num_metrics = 12;
 
-        // Set up: window_start = 7 means slots show metrics [7,8,9,10,11,0,1,2,3]
-        // Wait, that's after wrapping. Let me think about this differently.
-        //
-        // Actually, to have metric 12 (index 11) in slot 5 (0-indexed: slot 4):
-        // window_start + 4 = 11, so window_start = 7
-        // Window shows: [7,8,9,10,11,12-is-index-11,...] - no wait, indices are 0-11
-        //
         // Let's set window_start = 7:
         // Slot 0 -> metric (7 + 0) % 12 = 7
         // Slot 1 -> metric (7 + 1) % 12 = 8
